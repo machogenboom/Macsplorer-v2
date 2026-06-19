@@ -1,8 +1,10 @@
 name: release
 
-# Bij elke push naar 'main' wordt de versie automatisch met 1 opgehoogd
-# (patch: 0.1.0 -> 0.1.1), getagd, gebouwd en als GitHub Release gepubliceerd
-# met de installer eraan. Macsplorer ziet de nieuwe release vanzelf.
+# Bij elke push naar 'main' wordt automatisch een nieuwe versie gebouwd en als
+# GitHub Release gepubliceerd met de installer eraan. De versie is
+# 0.<minor>.<runnummer> en wordt afgeleid van het automatische workflow-runnummer,
+# zodat hij altijd oploopt ZONDER iets terug te committen naar de repo
+# (dus geen push-conflicten meer).
 
 on:
   push:
@@ -18,27 +20,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Versie ophogen
-        id: bump
+      - name: Versie bepalen
+        id: ver
         shell: bash
         run: |
-          new=$(node -e "const f='src-tauri/tauri.conf.json';const fs=require('fs');const j=JSON.parse(fs.readFileSync(f,'utf8'));const p=j.version.split('.').map(Number);p[2]=(p[2]||0)+1;j.version=p.join('.');fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');console.log(j.version)")
+          new=$(node -e "const fs=require('fs');const f='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));const p=j.version.split('.');const v=p[0]+'.'+p[1]+'.'+process.env.GITHUB_RUN_NUMBER;j.version=v;fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');console.log(v)")
           echo "new=$new" >> "$GITHUB_OUTPUT"
-
-      - name: Commit, tag & push
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add src-tauri/tauri.conf.json
-          git commit -m "chore: versie ${{ steps.bump.outputs.new }} [skip ci]"
-          git tag "v${{ steps.bump.outputs.new }}"
-          git push origin HEAD:main
-          git push origin "v${{ steps.bump.outputs.new }}"
+          echo "Versie voor deze build: $new"
 
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -53,7 +42,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v${{ steps.bump.outputs.new }}
-          releaseName: v${{ steps.bump.outputs.new }}
+          tagName: v${{ steps.ver.outputs.new }}
+          releaseName: v${{ steps.ver.outputs.new }}
           releaseDraft: false
           prerelease: false
