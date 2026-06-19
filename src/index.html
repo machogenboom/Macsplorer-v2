@@ -300,6 +300,12 @@ body.dark ::-webkit-scrollbar-thumb:hover{background:rgba(180,192,216,.75);backg
 .dbtn{border:1px solid rgba(var(--stroke),.45);background:rgba(var(--panel),.55);color:var(--text);font-size:12px;padding:5px 9px;border-radius:9px;cursor:pointer;white-space:nowrap;transition:all .15s}
 .dbtn:hover{background:rgba(var(--accent),.9);color:#fff;border-color:transparent}
 .dbtn.danger:hover{background:#ff453a}
+.kbd-row{display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid rgba(var(--stroke),.22)}
+.kbd-row:last-child{border-bottom:none}
+.kbd-label{flex:1;font-size:13px;color:var(--text)}
+.kbd-combo{flex-shrink:0;min-width:96px;text-align:center;font-size:12px;font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace;padding:5px 10px;border-radius:9px;cursor:pointer;border:1px solid rgba(var(--stroke),.45);background:rgba(var(--panel),.55);color:var(--text);transition:all .15s}
+.kbd-combo:hover{background:rgba(var(--accent),.9);color:#fff;border-color:transparent}
+.kbd-combo.rec{background:rgba(var(--accent),.95);color:#fff;border-color:transparent;animation:ctxin .4s ease infinite alternate}
 .modal-bg{position:fixed;inset:0;z-index:70;background:rgba(10,15,28,.45);display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
 .modal-bg.open{display:flex}
 .modal{width:380px;max-width:92vw;max-height:86vh;overflow-y:auto;border-radius:var(--radius);padding:22px}
@@ -433,6 +439,9 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
   <div class="field"><label>Hoekafronding</label><input type="range" min="6" max="30" value="22" class="slider" id="radiusSlider"></div>
   <div class="field"><label>Kaartgrootte (rasterweergave)</label><input type="range" min="96" max="300" value="150" class="slider" id="cardSize"></div>
   <div class="field"><label>Slogans (wisselen elke 15 min)</label><button class="btn ghost" id="editSlogans">Slogans bewerken…</button></div>
+  <div class="sec">⌨️ Sneltoetsen</div>
+  <div class="field"><div id="shortcutList"></div><button class="btn ghost" id="resetShortcuts" style="margin-top:10px">Standaard herstellen</button>
+    <div class="hint">Klik op een combinatie en druk daarna de gewenste toetsen in. Esc annuleert. Werkt onafhankelijk van toetsenbordindeling.</div></div>
   <div class="sec">⬇️ Updates (GitHub)</div>
   <div class="field"><label>GitHub-repo (eigenaar/repo)</label><input class="repo-in" id="ghRepo" placeholder="bijv. machogenboom/macsplorer" spellcheck="false">
     <button class="btn" id="checkUpd" style="margin-top:10px">Controleer op updates</button>
@@ -1034,30 +1043,93 @@ function setupNativeDrop(){
 }
 if(LIVE)setupNativeDrop();
 
+/* ===== Instelbare sneltoetsen =====
+   Combinaties worden opgeslagen als string met de FYSIEKE toets (e.code), bv.
+   "Ctrl+Alt+KeyV". Door e.code te gebruiken werkt het ongeacht toetsenbord-
+   indeling (AltGr op een NL-toetsenbord stuurde 'v' anders mee → vorige bug). */
+function navBack(){const t=tab();if(t.history.length){t.future.push(t.path);navigate(t.history.pop(),true);}}
+const SHORTCUTS=[
+  {id:'copy',       label:'Kopiëren',                 def:'Ctrl+KeyC',       run:()=>{if(tab().selSet.size)runCtx('copy');}},
+  {id:'cut',        label:'Knippen',                  def:'Ctrl+KeyX',       run:()=>{if(tab().selSet.size)runCtx('cut');}},
+  {id:'paste',      label:'Plakken',                  def:'Ctrl+KeyV',       run:()=>runCtx('paste')},
+  {id:'pasterename',label:'Plak-hernoemen (klembord)',def:'Ctrl+Alt+KeyV',   run:()=>specialPasteRename()},
+  {id:'copypath',   label:'Pad kopiëren',             def:'Ctrl+Shift+KeyC', run:()=>{if(tab().selSet.size)runCtx('copypath');}},
+  {id:'selectall',  label:'Alles selecteren',         def:'Ctrl+KeyA',       run:()=>{const ss=tab().selSet;ss.clear();displayed.forEach(x=>ss.add(x.path));markSel();}},
+  {id:'rename',     label:'Hernoemen',                def:'F2',              run:()=>{const p=selPaths();if(p.length===1)renameByPath(p[0]);}},
+  {id:'delete',     label:'Verwijderen',              def:'Delete',          run:()=>{if(tab().selSet.size)runCtx('delete');}},
+  {id:'props',      label:'Eigenschappen',            def:'Alt+Enter',       run:()=>{const ents=selEntries();if(ents.length)runCtx('props');}},
+  {id:'open',       label:'Openen',                   def:'Enter',           run:()=>{const ents=selEntries();if(ents.length===1)openEntry(ents[0]);}},
+  {id:'newfolder',  label:'Nieuwe map',               def:'Ctrl+Shift+KeyN', run:()=>runEmpty('newfolder')},
+  {id:'newtab',     label:'Nieuw tabblad',            def:'Ctrl+KeyT',       run:()=>newTab()},
+  {id:'closetab',   label:'Tabblad/split sluiten',    def:'Ctrl+KeyW',       run:()=>{if(panes.length>1)exitSplit();else if(tabs.length>1)closeTab(aIdx());}},
+  {id:'pathedit',   label:'Pad bewerken',             def:'Ctrl+KeyL',       run:()=>openPathEdit()},
+  {id:'reload',     label:'Vernieuwen',               def:'F5',              run:()=>reloadFolder()},
+  {id:'back',       label:'Terug',                    def:'Alt+ArrowLeft',   run:()=>navBack()},
+  {id:'forward',    label:'Vooruit',                  def:'Alt+ArrowRight',  run:()=>goForward()},
+  {id:'up',         label:'Map omhoog',               def:'Alt+ArrowUp',     run:()=>{const t=tab();if(t.path){const up=parent(t.path);if(up&&up!==t.path)navigate(up);}}},
+];
+let keymap=LS('keymap')||{};
+function effCombo(id){const s=SHORTCUTS.find(x=>x.id===id);return (keymap[id]||(s&&s.def))||'';}
+function comboFromEvent(e){
+  if(['Control','Alt','Shift','Meta','AltGraph'].includes(e.key))return null;
+  if(!e.code)return null;
+  return (e.ctrlKey||e.metaKey?'Ctrl+':'')+(e.altKey?'Alt+':'')+(e.shiftKey?'Shift+':'')+e.code;
+}
+const CODE_LABELS={Enter:'Enter',Delete:'Del',Backspace:'Backspace',Escape:'Esc',Space:'Spatie',Tab:'Tab',
+  ArrowLeft:'←',ArrowRight:'→',ArrowUp:'↑',ArrowDown:'↓',Comma:',',Period:'.',Slash:'/',Backslash:'\\',Minus:'-',Equal:'='};
+function comboLabel(combo){if(!combo)return '—';
+  return combo.split('+').map(part=>{
+    if(['Ctrl','Alt','Shift'].includes(part))return part;
+    if(CODE_LABELS[part])return CODE_LABELS[part];
+    if(part.startsWith('Key'))return part.slice(3);
+    if(part.startsWith('Digit'))return part.slice(5);
+    if(part.startsWith('Numpad'))return 'Num'+part.slice(6);
+    return part;
+  }).join('+');
+}
+function actionForCombo(combo){const s=SHORTCUTS.find(x=>effCombo(x.id)===combo);return s?s.id:null;}
+let kbdRecording=null;
 document.addEventListener('keydown',e=>{
+  if(kbdRecording)return;
   if(['INPUT','TEXTAREA'].includes(document.activeElement&&document.activeElement.tagName))return;
-  const cmd=e.ctrlKey||e.metaKey,sh=e.shiftKey,alt=e.altKey,k=e.key.toLowerCase();
-  if(cmd&&sh&&k==='c'){if(tab().selSet.size){e.preventDefault();runCtx('copypath');}}
-  else if(cmd&&sh&&k==='n'){e.preventDefault();runEmpty('newfolder');}
-  else if(cmd&&k==='l'){e.preventDefault();openPathEdit();}
-  else if(cmd&&k==='a'){e.preventDefault();const ss=tab().selSet;ss.clear();displayed.forEach(x=>ss.add(x.path));markSel();}
-  else if(cmd&&k==='c'){if(tab().selSet.size)runCtx('copy');}
-  else if(cmd&&k==='x'){if(tab().selSet.size)runCtx('cut');}
-  else if(cmd&&alt&&(k==='v'||e.code==='KeyV')){e.preventDefault();specialPasteRename();}
-  else if(cmd&&k==='v'){runCtx('paste');}
-  else if(cmd&&k==='t'){e.preventDefault();newTab();}
-  else if(cmd&&k==='w'){e.preventDefault();if(panes.length>1)exitSplit();else if(tabs.length>1)closeTab(aIdx());}
-  else if(alt&&e.key==='Enter'){const ents=selEntries();if(ents.length)runCtx('props');}
-  else if(alt&&e.key==='ArrowLeft'){e.preventDefault();const t=tab();if(t.history.length){t.future.push(t.path);navigate(t.history.pop(),true);}}
-  else if(alt&&e.key==='ArrowRight'){e.preventDefault();goForward();}
-  else if(alt&&e.key==='ArrowUp'){e.preventDefault();const t=tab();if(t.path){const up=parent(t.path);if(up&&up!==t.path)navigate(up);}}
-  else if(e.key==='F2'){const p=selPaths();if(p.length===1)renameByPath(p[0]);}
-  else if(e.key==='Enter'){const ents=selEntries();if(ents.length===1)openEntry(ents[0]);}
-  else if(e.key==='Backspace'){e.preventDefault();const t=tab();if(t.history.length){t.future.push(t.path);navigate(t.history.pop(),true);}}
-  else if(e.key==='Delete'){if(tab().selSet.size)runCtx('delete');}
-  else if(e.key==='F5'){e.preventDefault();reloadFolder();}
-  else if(e.key==='Escape'){hideCtxMenu();closePreview();document.getElementById('propBg').classList.remove('open');document.getElementById('sloganBg').classList.remove('open');document.getElementById('updBg').classList.remove('open');}
+  if(e.key==='Escape'){hideCtxMenu();closePreview();document.getElementById('propBg').classList.remove('open');document.getElementById('sloganBg').classList.remove('open');document.getElementById('updBg').classList.remove('open');return;}
+  if(e.key==='Backspace'){e.preventDefault();navBack();return;}
+  const combo=comboFromEvent(e);if(!combo)return;
+  const id=actionForCombo(combo);
+  if(id){e.preventDefault();const sc=SHORTCUTS.find(x=>x.id===id);if(sc)sc.run();}
 });
+function startRecord(id){
+  if(kbdRecording)return;
+  kbdRecording=id;renderShortcutSettings();
+  const onKey=ev=>{
+    if(['Control','Alt','Shift','Meta','AltGraph'].includes(ev.key))return; // wacht op echte toets
+    ev.preventDefault();ev.stopPropagation();
+    document.removeEventListener('keydown',onKey,true);
+    const wasRec=kbdRecording;kbdRecording=null;
+    if(ev.key!=='Escape'){
+      const combo=comboFromEvent(ev);
+      if(combo){
+        const dup=SHORTCUTS.find(s=>s.id!==wasRec&&effCombo(s.id)===combo);
+        if(dup)flash('Al in gebruik door: '+dup.label);
+        else{keymap[wasRec]=combo;SS('keymap',keymap);}
+      }
+    }
+    renderShortcutSettings();
+  };
+  document.addEventListener('keydown',onKey,true);
+}
+function renderShortcutSettings(){
+  const wrap=document.getElementById('shortcutList');if(!wrap)return;wrap.innerHTML='';
+  SHORTCUTS.forEach(sc=>{
+    const row=document.createElement('div');row.className='kbd-row';
+    const rec=kbdRecording===sc.id;
+    row.innerHTML=`<span class="kbd-label">${esc(sc.label)}</span><button class="kbd-combo${rec?' rec':''}">${rec?'Druk op toets…':esc(comboLabel(effCombo(sc.id)))}</button>`;
+    row.querySelector('.kbd-combo').onclick=()=>startRecord(sc.id);
+    wrap.appendChild(row);
+  });
+}
+{const rb=document.getElementById('resetShortcuts');if(rb)rb.onclick=()=>{keymap={};SS('keymap',keymap);renderShortcutSettings();flash('Sneltoetsen hersteld');};}
+renderShortcutSettings();
 function openEntry(f){if(f.isDir)navigate(f.path);else openPath(f.path);}
 async function openPath(p){if(LIVE){try{await invoke('open_path',{path:p});}catch(e){alert('Kan niet openen: '+e);}}}
 
