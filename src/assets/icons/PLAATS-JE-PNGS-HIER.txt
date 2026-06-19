@@ -1,0 +1,24 @@
+Zet hier je PNG-iconen neer met PRECIES deze bestandsnamen
+(kleine letters). Macsplorer gebruikt ze automatisch; ontbreekt
+er een, dan valt hij terug op het ingebouwde glyph-icoon.
+
+Bestandsiconen:
+  bestand.png      -> standaard bestand (alles zonder eigen icoon)
+  folder.png       -> mappen (wordt getoond als de map leeg is / geen voorbeeld heeft)
+  zip.png          -> zip / archieven (rar, 7z, tar, gz)
+  audio.png        -> audio (mp3, wav, flac, m4a, ...)
+
+Zijbalk:
+  schijf.png       -> lokale schijven
+  onedrive.png     -> OneDrive
+  googledrive.png  -> Google Drive
+  icloud.png       -> iCloud Drive
+
+Aanbevolen formaat: 256x256 of 512x512 px, transparante achtergrond.
+
+----------------------------------------------------------------
+App-icoon (het icoon van Macsplorer zelf in Windows):
+Dat zit in  src-tauri/icons/  en moet als .ico + meerdere PNG's.
+Wil je jouw eigen Macsplorer-icoon? Zet een vierkante PNG van
+1024x1024 in src-tauri/icons/ als 'app.png' en laat het me weten,
+dan genereer ik de juiste .ico en formaten en koppel ik 'm.

@@ -1,0 +1,13 @@
+# Rust / Tauri build-output (niet meepushen — wordt door CI gebouwd)
+/src-tauri/target/
+**/target/
+
+# Node
+node_modules/
+
+# OS / editor rommel
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/

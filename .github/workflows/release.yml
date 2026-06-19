@@ -1,0 +1,59 @@
+name: release
+
+# Bij elke push naar 'main' wordt de versie automatisch met 1 opgehoogd
+# (patch: 0.1.0 -> 0.1.1), getagd, gebouwd en als GitHub Release gepubliceerd
+# met de installer eraan. Macsplorer ziet de nieuwe release vanzelf.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Versie ophogen
+        id: bump
+        shell: bash
+        run: |
+          new=$(node -e "const f='src-tauri/tauri.conf.json';const fs=require('fs');const j=JSON.parse(fs.readFileSync(f,'utf8'));const p=j.version.split('.').map(Number);p[2]=(p[2]||0)+1;j.version=p.join('.');fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');console.log(j.version)")
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+
+      - name: Commit, tag & push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/tauri.conf.json
+          git commit -m "chore: versie ${{ steps.bump.outputs.new }} [skip ci]"
+          git tag "v${{ steps.bump.outputs.new }}"
+          git push origin HEAD:main
+          git push origin "v${{ steps.bump.outputs.new }}"
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Bouw & publiceer release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v${{ steps.bump.outputs.new }}
+          releaseName: v${{ steps.bump.outputs.new }}
+          releaseDraft: false
+          prerelease: false
