@@ -1113,7 +1113,8 @@ fn shell_drag(paths: Vec<String>) -> Result<(), String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Com::{IBindCtx, IDataObject};
     use windows::Win32::System::Ole::{
-        OleInitialize, OleUninitialize, DROPEFFECT_COPY, DROPEFFECT_LINK, DROPEFFECT_MOVE,
+        IDropSource, OleInitialize, OleUninitialize, DROPEFFECT_COPY, DROPEFFECT_LINK,
+        DROPEFFECT_MOVE,
     };
     use windows::Win32::UI::Shell::{BHID_DataObject, SHCreateItemFromParsingName, IShellItem};
     let first = match paths.into_iter().next() {
@@ -1123,17 +1124,16 @@ fn shell_drag(paths: Vec<String>) -> Result<(), String> {
     std::thread::spawn(move || unsafe {
         let _ = OleInitialize(None);
         let w: Vec<u16> = first.encode_utf16().chain(std::iter::once(0)).collect();
-        if let Ok(item) =
-            SHCreateItemFromParsingName::<_, IShellItem>(PCWSTR(w.as_ptr()), None::<&IBindCtx>)
-        {
+        if let Ok(item) = SHCreateItemFromParsingName::<_, _, IShellItem>(
+            PCWSTR(w.as_ptr()),
+            None::<&IBindCtx>,
+        ) {
             if let Ok(data) = item.BindToHandler::<IDataObject>(None, &BHID_DataObject) {
-                let mut eff = DROPEFFECT_COPY;
                 let _ = windows::Win32::UI::Shell::SHDoDragDrop(
                     HWND::default(),
                     &data,
-                    None,
+                    None::<&IDropSource>,
                     DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK,
-                    &mut eff,
                 );
             }
         }
