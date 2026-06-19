@@ -1128,7 +1128,9 @@ fn shell_drag(paths: Vec<String>) -> Result<(), String> {
             PCWSTR(w.as_ptr()),
             None::<&IBindCtx>,
         ) {
-            if let Ok(data) = item.BindToHandler::<IDataObject>(None, &BHID_DataObject) {
+            if let Ok(data) =
+                item.BindToHandler::<_, IDataObject>(None::<&IBindCtx>, &BHID_DataObject)
+            {
                 let _ = windows::Win32::UI::Shell::SHDoDragDrop(
                     HWND::default(),
                     &data,
