@@ -930,7 +930,7 @@ async function runCtx(a){
     else if(a==='copypath'){copyClip(paths.join('\r\n'));flash(paths.length>1?paths.length+' paden gekopieerd':'Pad gekopieerd');}
     else if(a==='duplicate'){if(!LIVE)return;await invoke('copy_paths',{paths,destDir:dir});await reloadFolder();flash('Gedupliceerd');}
     else if(a==='pin'){ents.filter(x=>x.isDir).forEach(x=>{if(!shortcuts.some(s=>s.path===x.path))shortcuts.push({name:x.name,path:x.path});});SS('shortcuts',shortcuts);renderNav();flash('Aan favorieten toegevoegd');}
-    else if(a==='props'){openProps(ents);}
+    else if(a==='props'){if(LIVE&&ents.length===1){invoke('shell_properties',{path:ents[0].path}).catch(e=>alert('Eigenschappen: '+e));}else{openProps(ents);}}
     else if(a==='mail'){if(!LIVE)return;try{await invoke('send_mail',{paths});flash('Outlook geopend');}catch(e){alert('Mailen mislukt: '+e);}}
     else if(a==='hideapp'){paths.forEach(p=>{if(!hiddenApps.includes(p))hiddenApps.push(p);});SS('hiddenApps',hiddenApps);applyAppsList();flash(paths.length+' verborgen');}
     else if(a==='unhideapp'){hiddenApps=hiddenApps.filter(p=>!paths.includes(p));SS('hiddenApps',hiddenApps);applyAppsList();flash('Weer getoond');}

@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost data: blob:; font-src 'self' data:; connect-src 'self' ipc: https://ipc.localhost https://api.github.com https://github.com https://*.githubusercontent.com; media-src 'self' asset: https://asset.localhost; object-src 'none'; frame-ancestors 'none'; base-uri 'self'",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost asset: http://asset.localhost https://asset.localhost https://api.github.com https://github.com https://*.githubusercontent.com; media-src 'self' asset: http://asset.localhost https://asset.localhost blob: data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'",
       "assetProtocol": {
         "enable": true,
         "scope": [

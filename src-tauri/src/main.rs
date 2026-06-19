@@ -869,54 +869,211 @@ struct LsDevice {
     device_type: String,
 }
 
-fn ls_discover_blocking() -> Vec<LsDevice> {
-    use socket2::{Domain, Protocol, Socket, Type};
-    use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
-    use std::time::{Duration, Instant};
-    let mut out: Vec<LsDevice> = Vec::new();
-    let sock = match Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)) {
-        Ok(s) => s,
-        Err(_) => return out,
-    };
-    let _ = sock.set_reuse_address(true);
-    let bind: SocketAddr = "0.0.0.0:53317".parse().unwrap();
-    if sock.bind(&bind.into()).is_err() {
-        return out;
+/// Het info-blok dat Macsplorer over zichzelf uitstuurt (announce + registratie-antwoord).
+/// `http_port` is de poort waarop ONZE HTTP-listener draait, zodat andere
+/// apparaten daar hun registratie naartoe sturen (en niet naar 53317, dat
+/// mogelijk al door de echte LocalSend-app bezet is).
+fn ls_self_info(http_port: u16) -> serde_json::Value {
+    serde_json::json!({
+        "alias": "Macsplorer",
+        "version": "2.0",
+        "deviceModel": "PC",
+        "deviceType": "desktop",
+        "fingerprint": format!("macsplorer-{}", std::process::id()),
+        "port": http_port,
+        "protocol": "http",
+        "download": false
+    })
+}
+
+/// Voegt een ontdekt apparaat toe (uit multicast of uit een HTTP-registratie),
+/// met ontdubbeling op fingerprint en filtering van onszelf.
+fn ls_add_device(
+    found: &std::sync::Mutex<Vec<LsDevice>>,
+    seen: &std::sync::Mutex<std::collections::HashSet<String>>,
+    v: &serde_json::Value,
+    ip: String,
+) {
+    let alias = v.get("alias").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    if alias.is_empty() || alias == "Macsplorer" {
+        return;
     }
-    let _ = sock.join_multicast_v4(&Ipv4Addr::new(224, 0, 0, 167), &Ipv4Addr::UNSPECIFIED);
-    let _ = sock.set_read_timeout(Some(Duration::from_millis(600)));
-    let udp: UdpSocket = sock.into();
-    let announce = format!(
-        "{{\"alias\":\"Macsplorer\",\"version\":\"2.0\",\"deviceModel\":\"PC\",\"deviceType\":\"desktop\",\"fingerprint\":\"macsplorer-{}\",\"port\":53317,\"protocol\":\"http\",\"download\":false,\"announce\":true}}",
-        std::process::id()
-    );
-    let _ = udp.send_to(announce.as_bytes(), "224.0.0.167:53317");
-    let start = Instant::now();
-    let mut buf = [0u8; 4096];
-    let mut seen = std::collections::HashSet::new();
-    while start.elapsed() < Duration::from_millis(3000) {
-        if let Ok((n, src)) = udp.recv_from(&mut buf) {
-            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&buf[..n]) {
-                let alias = v.get("alias").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                if alias.is_empty() || alias == "Macsplorer" {
-                    continue;
-                }
-                let fp = v.get("fingerprint").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                if !fp.is_empty() && !seen.insert(fp.clone()) {
-                    continue;
-                }
-                out.push(LsDevice {
-                    alias,
-                    ip: src.ip().to_string(),
-                    port: v.get("port").and_then(|x| x.as_u64()).unwrap_or(53317) as u16,
-                    protocol: v.get("protocol").and_then(|x| x.as_str()).unwrap_or("http").to_string(),
-                    fingerprint: fp,
-                    device_type: v.get("deviceType").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-                });
-            }
+    let fp = v.get("fingerprint").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let key = if fp.is_empty() { format!("{alias}@{ip}") } else { fp.clone() };
+    {
+        let mut s = match seen.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        if !s.insert(key) {
+            return;
         }
     }
-    out
+    let dev = LsDevice {
+        alias,
+        ip,
+        port: v.get("port").and_then(|x| x.as_u64()).unwrap_or(53317) as u16,
+        protocol: v.get("protocol").and_then(|x| x.as_str()).unwrap_or("http").to_string(),
+        fingerprint: fp,
+        device_type: v.get("deviceType").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+    };
+    if let Ok(mut f) = found.lock() {
+        f.push(dev);
+    }
+}
+
+/// Maakt een TCP-listener. Probeert eerst de standaard LocalSend-poort 53317;
+/// lukt dat niet (de echte LocalSend-app gebruikt hem al), dan een vrije poort
+/// die de OS toewijst. Geeft de listener én de werkelijke poort terug, zodat we
+/// die in onze announce kunnen zetten en apparaten daar naartoe registreren.
+fn ls_tcp_listener() -> std::io::Result<(std::net::TcpListener, u16)> {
+    use socket2::{Domain, Socket, Type};
+    let make = |port: u16| -> std::io::Result<std::net::TcpListener> {
+        let sock = Socket::new(Domain::IPV4, Type::STREAM, None)?;
+        let _ = sock.set_reuse_address(true);
+        let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse().unwrap();
+        sock.bind(&addr.into())?;
+        sock.listen(128)?;
+        Ok(sock.into())
+    };
+    // Eerst 53317 (zodat standaard-clients ons zonder meer vinden); anders een
+    // vrije poort (port 0 -> OS kiest), om naast de LocalSend-app te draaien.
+    let listener = make(53317).or_else(|_| make(0))?;
+    let port = listener.local_addr()?.port();
+    Ok((listener, port))
+}
+
+/// Handelt één inkomende HTTP-verbinding af. Andere LocalSend-apparaten doen een
+/// POST naar /api/localsend/v2/register (als reactie op onze announce) of vragen
+/// /api/localsend/v2/info op. In beide gevallen antwoorden we met ons eigen info-blok.
+fn ls_handle_http(
+    stream: &mut std::net::TcpStream,
+    ip: &str,
+    our_info: &str,
+    found: &std::sync::Mutex<Vec<LsDevice>>,
+    seen: &std::sync::Mutex<std::collections::HashSet<String>>,
+) {
+    use std::io::{Read, Write};
+    use std::time::Duration;
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(800)));
+    let mut data: Vec<u8> = Vec::new();
+    let mut buf = [0u8; 2048];
+    loop {
+        match stream.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                data.extend_from_slice(&buf[..n]);
+                if let Some(pos) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&data[..pos]).to_ascii_lowercase();
+                    let clen = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .and_then(|v| v.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if data.len() >= pos + 4 + clen {
+                        break;
+                    }
+                }
+                if data.len() > 65536 {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    if let Some(pos) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+        let body = &data[pos + 4..];
+        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(body) {
+            ls_add_device(found, seen, &v, ip.to_string());
+        }
+    }
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        our_info.len(),
+        our_info
+    );
+    let _ = stream.write_all(resp.as_bytes());
+    let _ = stream.flush();
+}
+
+fn ls_discover_blocking() -> Vec<LsDevice> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    use std::collections::HashSet;
+    use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    let found: Arc<Mutex<Vec<LsDevice>>> = Arc::new(Mutex::new(Vec::new()));
+    let seen: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+
+    // --- TCP-listener: vangt HTTP-registraties van apparaten die op onze
+    //     announce reageren (telefoons, andere pc's). Draait op 53317, of op
+    //     een vrije poort als de echte LocalSend-app die al bezet houdt. We
+    //     adverteren de werkelijke poort, zodat registraties bij ÓNS aankomen. ---
+    let http_port = match ls_tcp_listener() {
+        Ok((listener, port)) => {
+            let _ = listener.set_nonblocking(true);
+            let f2 = found.clone();
+            let s2 = seen.clone();
+            let info2 = ls_self_info(port).to_string();
+            std::thread::spawn(move || {
+                let deadline = Instant::now() + Duration::from_millis(3200);
+                while Instant::now() < deadline {
+                    match listener.accept() {
+                        Ok((mut stream, peer)) => {
+                            let ip = peer.ip().to_string();
+                            ls_handle_http(&mut stream, &ip, &info2, &f2, &s2);
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(40));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+            port
+        }
+        Err(_) => 53317,
+    };
+
+    let mut announce_val = ls_self_info(http_port);
+    announce_val["announce"] = serde_json::Value::Bool(true);
+    let announce = announce_val.to_string();
+
+    // --- UDP-multicast: announce uitsturen + announces van anderen opvangen. ---
+    let udp_sock = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)).ok();
+    let bind: SocketAddr = "0.0.0.0:53317".parse().unwrap();
+    let bound = udp_sock.as_ref().map(|sock| {
+        let _ = sock.set_reuse_address(true);
+        sock.bind(&bind.into()).is_ok()
+    }).unwrap_or(false);
+    if let (Some(sock), true) = (udp_sock, bound) {
+        let _ = sock.join_multicast_v4(&Ipv4Addr::new(224, 0, 0, 167), &Ipv4Addr::UNSPECIFIED);
+        let _ = sock.set_read_timeout(Some(Duration::from_millis(500)));
+        let udp: UdpSocket = sock.into();
+        // Meerdere keren announcen zodat ook net-gestarte apparaten reageren.
+        let _ = udp.send_to(announce.as_bytes(), "224.0.0.167:53317");
+        let start = Instant::now();
+        let mut buf = [0u8; 4096];
+        let mut last_announce = Instant::now();
+        while start.elapsed() < Duration::from_millis(3000) {
+            if last_announce.elapsed() > Duration::from_millis(1000) {
+                let _ = udp.send_to(announce.as_bytes(), "224.0.0.167:53317");
+                last_announce = Instant::now();
+            }
+            if let Ok((n, src)) = udp.recv_from(&mut buf) {
+                if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&buf[..n]) {
+                    ls_add_device(&found, &seen, &v, src.ip().to_string());
+                }
+            }
+        }
+    } else {
+        // Poort bezet (waarschijnlijk de LocalSend-app zelf): geef de TCP-listener
+        // nog even de tijd om registraties op te vangen.
+        std::thread::sleep(Duration::from_millis(3200));
+    }
+
+    found.lock().map(|f| f.clone()).unwrap_or_default()
 }
 
 #[tauri::command]
