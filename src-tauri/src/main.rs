@@ -341,13 +341,48 @@ fn open_path(path: String) -> Result<(), String> {
     open::that_detached(&path).map_err(|e| e.to_string())
 }
 
+/// Valideert een losse bestands-/mapnaam (geen pad). Weigert padscheidings-
+/// tekens, `..`, control-tekens, Windows-gereserveerde namen en afsluitende
+/// punt/spatie.
+fn valid_entry_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("Ongeldige naam".into());
+    }
+    if name.contains('/') || name.contains('\\') {
+        return Err("Naam mag geen padscheidingstekens bevatten".into());
+    }
+    if name == "." || name == ".." {
+        return Err("Ongeldige naam".into());
+    }
+    // Reserveert Windows-tekens en control-tekens.
+    if name.chars().any(|c| matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*') || (c as u32) < 0x20) {
+        return Err("Naam bevat ongeldige tekens".into());
+    }
+    // Afsluitende punt of spatie is op Windows problematisch.
+    if name.ends_with('.') || name.ends_with(' ') {
+        return Err("Naam mag niet eindigen op een punt of spatie".into());
+    }
+    // Gereserveerde apparaatnamen (CON, PRN, AUX, NUL, COM1-9, LPT1-9),
+    // ook met extensie (bv. "CON.txt").
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
+    let reserved = matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL"
+    ) || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+        && stem.len() == 4
+        && stem.as_bytes()[3].is_ascii_digit()
+        && stem.as_bytes()[3] != b'0');
+    if reserved {
+        return Err("Gereserveerde naam".into());
+    }
+    Ok(())
+}
+
 /// Bestand of map hernoemen. Geeft het nieuwe pad terug.
 #[tauri::command]
 fn rename(path: String, new_name: String) -> Result<String, String> {
     let trimmed = new_name.trim();
-    if trimmed.is_empty() || trimmed.contains('/') || trimmed.contains('\\') {
-        return Err("Ongeldige naam".into());
-    }
+    valid_entry_name(trimmed)?;
     let p = Path::new(&path);
     let parent = p.parent().ok_or("Geen bovenliggende map")?;
     let dest = parent.join(trimmed);
@@ -587,9 +622,7 @@ fn move_paths(paths: Vec<String>, dest_dir: String) -> Result<(), String> {
 #[tauri::command]
 fn create_folder(parent: String, name: String) -> Result<String, String> {
     let nm = name.trim();
-    if nm.is_empty() || nm.contains('/') || nm.contains('\\') {
-        return Err("Ongeldige naam".into());
-    }
+    valid_entry_name(nm)?;
     let mut dest = Path::new(&parent).join(nm);
     let mut i = 2;
     while dest.exists() {
@@ -768,6 +801,10 @@ fn drag_icon() -> Result<String, String> {
 }
 
 /// Experimenteel: probeert LocalSend te starten met de geselecteerde bestanden.
+/// LET OP (laag risico): "localsend" wordt via PATH opgezocht. In een omgeving
+/// met een door een aanvaller beheerde PATH-map kan een vals "localsend.exe"
+/// starten. Aanbevolen vervolg: een vast/bekend installatiepad gebruiken.
+/// Argumenten worden los doorgegeven, dus er is geen command-injection.
 #[tauri::command]
 fn localsend(paths: Vec<String>) -> Result<(), String> {
     let mut cmd = std::process::Command::new("localsend");
@@ -898,6 +935,12 @@ async fn localsend_send(device: serde_json::Value, paths: Vec<String>) -> Result
         return Err("Geen apparaat".into());
     }
     let base = format!("{protocol}://{ip}:{port}");
+    // LocalSend gebruikt per ontwerp self-signed certificaten; daarom wordt de
+    // standaard certificaatvalidatie hier overgeslagen. LET OP: dit biedt geen
+    // bescherming tegen een man-in-the-middle op het LAN. Aanbevolen vervolg:
+    // verifieer de door het protocol meegestuurde `fingerprint` (SHA-256 van het
+    // certificaat) via een eigen rustls-verifier i.p.v. elk certificaat te
+    // accepteren.
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
         .timeout(std::time::Duration::from_secs(30))
@@ -1059,6 +1102,40 @@ fn list_apps() -> Vec<Entry> {
     out
 }
 
+/// Genereert een onvoorspelbare suffix voor tijdelijke bestanden (anti-TOCTOU).
+fn unique_token() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    // Meng met het adres van een lokale variabele voor extra onvoorspelbaarheid.
+    let salt = &nanos as *const _ as usize;
+    format!("{:x}{:x}", nanos, salt)
+}
+
+/// Controleert of een download-URL veilig is voor de auto-update:
+/// alleen https en alleen onze eigen GitHub-release-hosts.
+fn is_allowed_update_url(url: &str) -> bool {
+    let u = url.trim();
+    if !u.starts_with("https://") {
+        return false;
+    }
+    // Host uit de URL halen (tussen "https://" en de eerste '/').
+    let rest = &u["https://".len()..];
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = host.split('@').last().unwrap_or(host); // strip eventuele userinfo
+    let host = host.split(':').next().unwrap_or(host); // strip poort
+    let host = host.to_ascii_lowercase();
+    matches!(
+        host.as_str(),
+        "github.com"
+            | "api.github.com"
+            | "objects.githubusercontent.com"
+            | "release-assets.githubusercontent.com"
+    ) || host.ends_with(".githubusercontent.com")
+}
+
 /// Opent een nieuwe Outlook-mail met de bestanden als bijlage.
 /// Mappen (of meerdere items) worden eerst gezipt.
 #[tauri::command]
@@ -1072,7 +1149,7 @@ fn send_mail(paths: Vec<String>) -> Result<(), String> {
             .unwrap_or_else(std::env::temp_dir)
             .join("macsplorer_mail");
         let _ = fs::create_dir_all(&dir);
-        let zpath = dir.join(format!("bijlage_{}.zip", std::process::id()));
+        let zpath = dir.join(format!("bijlage_{}_{}.zip", std::process::id(), unique_token()));
         let file = fs::File::create(&zpath).map_err(|e| e.to_string())?;
         let mut zw = zip::ZipWriter::new(file);
         let opt = zip::write::SimpleFileOptions::default();
@@ -1088,11 +1165,12 @@ fn send_mail(paths: Vec<String>) -> Result<(), String> {
     };
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        let line = format!("start \"\" outlook.exe /a \"{}\"", attach);
-        std::process::Command::new("cmd")
-            .arg("/C")
-            .raw_arg(&line)
+        // Geen shell (cmd /C) en geen string-interpolatie: het pad wordt als
+        // los argument doorgegeven, zodat een bestandsnaam met aanhalingstekens
+        // of shell-tekens niet kan uitbreken (command injection).
+        std::process::Command::new("outlook.exe")
+            .arg("/a")
+            .arg(&attach)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -1101,6 +1179,13 @@ fn send_mail(paths: Vec<String>) -> Result<(), String> {
         let _ = attach;
     }
     Ok(())
+}
+
+/// Leest platte tekst van het klembord (voor de speciale plak-hernoemfunctie).
+#[tauri::command]
+fn clipboard_text() -> Result<String, String> {
+    let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    cb.get_text().map_err(|e| e.to_string())
 }
 
 /// Sleept bestand(en) precies zoals Windows Verkenner doet, via het echte
@@ -1170,12 +1255,23 @@ fn copy_image(path: String) -> Result<(), String> {
 /// Downloadt de nieuwe installer en start die (werkt in-place bij), sluit daarna de app.
 #[tauri::command]
 async fn update_app(url: String) -> Result<(), String> {
+    // Alleen https en alleen onze eigen GitHub-release-hosts toestaan. Hierdoor
+    // kan een (eventueel via XSS) aangeroepen update niet naar een willekeurige
+    // 'evil.exe' wijzen.
+    if !is_allowed_update_url(&url) {
+        return Err("Geweigerd: alleen https-downloads van GitHub-releases zijn toegestaan.".into());
+    }
     let client = reqwest::Client::builder()
         .user_agent("Macsplorer")
+        .https_only(true)
         .timeout(std::time::Duration::from_secs(180))
         .build()
         .map_err(|e| e.to_string())?;
     let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    // Volg geen redirect naar een niet-toegestane host.
+    if !is_allowed_update_url(resp.url().as_str()) {
+        return Err("Geweigerd: download leidde om naar een niet-vertrouwde host.".into());
+    }
     if !resp.status().is_success() {
         return Err(format!("Download faalde ({})", resp.status()));
     }
@@ -1184,7 +1280,9 @@ async fn update_app(url: String) -> Result<(), String> {
         .unwrap_or_else(std::env::temp_dir)
         .join("macsplorer_update");
     let _ = fs::create_dir_all(&dir);
-    let path = dir.join("Macsplorer-setup.exe");
+    // Onvoorspelbare bestandsnaam (anti-TOCTOU); een lokale aanvaller kan de
+    // installer niet vooraf vervangen.
+    let path = dir.join(format!("Macsplorer-setup-{}.exe", unique_token()));
     fs::write(&path, bytes.as_ref()).map_err(|e| e.to_string())?;
     #[cfg(windows)]
     {
@@ -1237,6 +1335,7 @@ fn main() {
             list_apps,
             send_mail,
             copy_image,
+            clipboard_text,
             shell_drag,
             update_app
         ])

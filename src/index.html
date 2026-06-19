@@ -59,6 +59,7 @@ body.resizing *{transition:none !important}
 .iconbtn:hover{background:rgba(var(--accent),.22);transform:translateY(-1px)}
 .iconbtn:active{transform:scale(.94)}
 .iconbtn:disabled{opacity:.4;cursor:default}
+.iconbtn.on{color:var(--accent);background:rgba(var(--accent),.16)}
 .iconbtn svg{width:18px;height:18px}
 .breadcrumb{display:flex;align-items:center;gap:3px;font-size:14px;color:var(--text-soft);flex:1 1 auto;min-width:60px;overflow:hidden;cursor:default}
 .breadcrumb .pathedit{flex:1;min-width:200px;background:rgba(var(--panel),.6);border:1px solid rgba(var(--accent),.55);border-radius:8px;padding:5px 9px;font:inherit;color:var(--text);outline:none}
@@ -335,12 +336,13 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
     <button class="iconbtn" id="pathEdit" title="Pad bewerken (Ctrl+L)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
     <button class="side-gear" id="fab" title="Instellingen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="searchInput" placeholder="Zoeken (synoniemen actief)…"><button class="scope-toggle" id="scopeToggle" title="Wissel tussen alleen deze map en overal zoeken">Deze map</button></div>
+    <button class="iconbtn" id="prevToggle" title="Voorbeeldpaneel tonen/verbergen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
     <div class="win-dots"><button class="dot y" id="winMin" title="Minimaliseren"></button><button class="dot g" id="winMax" title="Maximaliseren"></button><button class="dot r" id="winClose" title="Sluiten"></button></div>
   </header>
 
   <aside class="sidebar glass">
     <div class="side-scroll">
-      <div class="brand"><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><img class="brandimg" src="assets/icons/app.png" alt="" onerror="this.remove()"></div><div><h1>Macsplorer</h1><span id="brandSlogan">Liquid Glass Explorer</span></div></div>
+      <div class="brand"><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><img class="brandimg" src="assets/icons/app.png" alt="" data-fb="remove"></div><div><h1>Macsplorer</h1><span id="brandSlogan">Liquid Glass Explorer</span></div></div>
       <div class="side-label">Favorieten <span class="add" id="addShortcut" title="Map toevoegen">＋</span></div>
       <div id="navFav"></div>
       <div class="side-label" style="margin-top:10px">Labels</div>
@@ -433,6 +435,25 @@ const appWindow=T?.window?.getCurrentWindow?T.window.getCurrentWindow():null;
 const LIVE=!!invoke;
 const SEP=navigator.userAgent.includes('Windows')?'\\':'/';
 
+/* ===== HTML-escaping voor alle data uit het bestandssysteem / netwerk ===== */
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ===== CSP-veilige afbeelding-fallbacks (vervangt inline onerror/onload) =====
+   data-fb="hide"  -> bij fout verbergen; bij laden de glyphbg eronder verbergen
+   data-fb="remove"-> bij fout verwijderen
+   data-fb="emoji" -> bij fout vervangen door data-emoji-tekst */
+document.addEventListener('error',e=>{
+  const el=e.target;if(!el||el.tagName!=='IMG')return;
+  const fb=el.dataset.fb;
+  if(fb==='remove')el.remove();
+  else if(fb==='emoji')el.replaceWith(document.createTextNode(el.dataset.emoji||'📁'));
+  else if(fb==='hide')el.style.display='none';
+},true);
+document.addEventListener('load',e=>{
+  const el=e.target;if(!el||el.tagName!=='IMG')return;
+  if(el.dataset.fb==='hide'){const g=el.previousElementSibling;if(g&&g.classList.contains('glyphbg'))g.style.display='none';}
+},true);
+
 const EXT_TYPE={jpg:'image',jpeg:'image',png:'image',gif:'image',webp:'image',bmp:'image',svg:'image',heic:'image',tiff:'image',ico:'image',
  mp4:'video',mov:'video',mkv:'video',avi:'video',webm:'video',m4v:'video',wmv:'video',
  mp3:'audio',wav:'audio',flac:'audio',aac:'audio',ogg:'audio',m4a:'audio',
@@ -462,19 +483,19 @@ const SMALL_ICON=TYPE_COLOR;
 const ICON_PNG={folder:'folder.png',audio:'audio.png',archive:'zip.png',doc:'bestand.png',code:'bestand.png',image:'bestand.png',video:'bestand.png',exe:'exe.png'};
 function glyphSVG(t){return GLYPH[t]||GLYPH.doc;}
 function iconHTML(t,ext){const png=ICON_PNG[t]||'bestand.png';
-  const label=(png==='bestand.png'&&ext)?`<span class="extlbl">${String(ext).toUpperCase().slice(0,4)}</span>`:'';
-  return `<div class="glyphbg" style="color:${TYPE_COLOR[t]||'#90a0b8'}">${glyphSVG(t)}</div><img class="pngicon" src="assets/icons/${png}" alt="" onload="var g=this.previousElementSibling;if(g)g.style.display='none'" onerror="this.style.display='none'">${label}`;}
+  const label=(png==='bestand.png'&&ext)?`<span class="extlbl">${esc(String(ext).toUpperCase().slice(0,4))}</span>`:'';
+  return `<div class="glyphbg" style="color:${TYPE_COLOR[t]||'#90a0b8'}">${glyphSVG(t)}</div><img class="pngicon" src="assets/icons/${png}" alt="" data-fb="hide">${label}`;}
 function cardIcon(t,ext){return `<div class="thumb iconwrap">${iconHTML(t,ext)}</div>`;}
 function smallIcon(t,ext){return `<div class="tw iconwrap">${iconHTML(t,ext)}</div>`;}
 function sideIconHTML(it){
-  if(favIcons[it.path]&&toAssetUrl){return `<span class="ic"><img class="sideimg" src="${toAssetUrl(favIcons[it.path])}" alt="" onerror="this.replaceWith(document.createTextNode('📁'))"></span>`;}
+  if(favIcons[it.path]&&toAssetUrl){return `<span class="ic"><img class="sideimg" src="${esc(toAssetUrl(favIcons[it.path]))}" alt="" data-fb="emoji" data-emoji="📁"></span>`;}
   const n=(it.name||'').toLowerCase();let png='folder.png',emoji='📁';
   if(/icloud/.test(n)){png='icloud.png';emoji='☁️';}
   else if(/onedrive/.test(n)){png='onedrive.png';emoji='🔵';}
   else if(/google/.test(n)){png='googledrive.png';emoji='🟢';}
   else if(it.kind==='drive'){png='schijf.png';emoji='💽';}
   else if(it.kind==='cloud'){png='icloud.png';emoji='☁️';}
-  return `<span class="ic"><img class="sideimg" src="assets/icons/${png}" alt="" onerror="this.replaceWith(document.createTextNode('${emoji}'))"></span>`;
+  return `<span class="ic"><img class="sideimg" src="assets/icons/${png}" alt="" data-fb="emoji" data-emoji="${emoji}"></span>`;
 }
 
 const LS=k=>{try{return JSON.parse(localStorage.getItem('macs_'+k));}catch(e){return null;}};
@@ -497,7 +518,7 @@ const dirSizeCache=new Map();
 function tagById(id){return tags.find(t=>t.id===id);}
 function toggleFileTag(path,id){const arr=fileTags[path]?fileTags[path].slice():[];const i=arr.indexOf(id);if(i>=0)arr.splice(i,1);else arr.push(id);if(arr.length)fileTags[path]=arr;else delete fileTags[path];SS('fileTags',fileTags);}
 function pathsWithTag(id){return Object.keys(fileTags).filter(p=>(fileTags[p]||[]).includes(id));}
-function tagDots(path){const ids=fileTags[path]||[];if(!ids.length)return '';return `<span class="tagdots">${ids.map(id=>{const tg=tagById(id);return tg?`<span class="tagdot" style="background:${tg.color}" title="${tg.name}"></span>`:'';}).join('')}</span>`;}
+function tagDots(path){const ids=fileTags[path]||[];if(!ids.length)return '';return `<span class="tagdots">${ids.map(id=>{const tg=tagById(id);return tg?`<span class="tagdot" style="background:${esc(tg.color)}" title="${esc(tg.name)}"></span>`:'';}).join('')}</span>`;}
 let ALL_ROOTS=[], baseLocs=[];
 
 /* ===== Tabs ===== */
@@ -516,7 +537,7 @@ function renderTabs(){
     const d=document.createElement('div');
     const isA=i===aIdx(),inSplit=panes.length>1&&panes.includes(i);
     d.className='tab'+(isA?' on':'')+(inSplit&&!isA?' on2':'');
-    d.innerHTML=`<span class="tn">${t.title||'Start'}</span>`;
+    d.innerHTML=`<span class="tn">${esc(t.title||'Start')}</span>`;
     if(tabs.length>1){const c=document.createElement('button');c.className='tc';c.textContent='✕';c.onclick=e=>{e.stopPropagation();closeTab(i);};d.appendChild(c);}
     d.onclick=()=>{if(suppressClick){suppressClick=false;return;}panes[activePane]=i;syncFromTab();};
     enableTabDrag(d,i);
@@ -595,7 +616,7 @@ async function loadFolderPrev(el){
   try{const first=await invoke('folder_preview',{path});
     if(first){const tp=await invoke('thumbnail',{path:first,max:256});const url=toAssetUrl(tp);
       el.classList.remove('pending');
-      el.outerHTML=`<div class="${base} iconwrap folderwrap">${iconHTML('folder')}<img class="folderprev-img" src="${url}" alt="" onerror="this.remove()"></div>`;
+      el.outerHTML=`<div class="${base} iconwrap folderwrap">${iconHTML('folder')}<img class="folderprev-img" src="${esc(url)}" alt="" data-fb="remove"></div>`;
     } else plain();
   }catch(e){plain();}
 }
@@ -677,7 +698,7 @@ function cardHTML(T,f,i){
   else thumb=cardIcon(t,f.ext);
   const meta=f.isDir?(dirSizeCache.has(f.path)?`${fmtSize(dirSizeCache.get(f.path))} · ${fmtDate(f.modified)}`:`… · ${fmtDate(f.modified)}`):`${fmtSize(f.size)} · ${fmtDate(f.modified)}`;
   const selCls=T.selSet.has(f.path)?' sel':'';
-  return `<div class="card${selCls}" data-i="${i}" data-dir="${f.isDir?1:0}" title="${f.path}">${tagDots(f.path)}${thumb}<div class="name" data-act="rename">${f.name}</div><div class="meta" data-szp="${encodeURIComponent(f.path)}" data-mod="${f.modified}">${meta}</div></div>`;
+  return `<div class="card${selCls}" data-i="${i}" data-dir="${f.isDir?1:0}" title="${esc(f.path)}">${tagDots(f.path)}${thumb}<div class="name" data-act="rename">${esc(f.name)}</div><div class="meta" data-szp="${encodeURIComponent(f.path)}" data-mod="${f.modified}">${meta}</div></div>`;
 }
 function renderGrid(T,area,list){
   T.displayed=list;
@@ -717,7 +738,7 @@ function rowHTML(T,f,depth,i){
   const meta=fmtDate(f.modified);
   const sz=f.isDir?(dirSizeCache.has(f.path)?fmtSize(dirSizeCache.get(f.path)):'…'):fmtSize(f.size);
   const selCls=T.selSet.has(f.path)?' sel':'';
-  return `<div class="row${selCls}" data-i="${i}" data-dir="${f.isDir?1:0}" style="margin-left:${depth*18}px" title="${f.path}">${disc}${tw}<span class="nm" data-act="rename">${f.name}</span>${tagDots(f.path)}<span class="mt">${meta}</span><span class="sz" data-szp="${encodeURIComponent(f.path)}">${sz}</span></div>`;
+  return `<div class="row${selCls}" data-i="${i}" data-dir="${f.isDir?1:0}" style="margin-left:${depth*18}px" title="${esc(f.path)}">${disc}${tw}<span class="nm" data-act="rename">${esc(f.name)}</span>${tagDots(f.path)}<span class="mt">${meta}</span><span class="sz" data-szp="${encodeURIComponent(f.path)}">${sz}</span></div>`;
 }
 async function renderList(T,area,topList){
   const parts=[];T.displayed=[];
@@ -833,7 +854,7 @@ function showCtxMenu(x,y){
   if(appsViewActive){h+='<div class="sepm"></div>';h+=it('🙈','Verbergen','hideapp');h+=it('👁','Weer tonen','unhideapp');}
   h+='<div class="sepm"></div>';
   h+=it('ⓘ','Eigenschappen','props','','Alt↵');
-  if(tags.length){h+='<div class="sepm"></div>';h+='<div class="mi-tags">'+tags.map(tg=>`<span class="mtag" data-tag="${tg.id}" style="background:${tg.color}" title="${tg.name}"></span>`).join('')+'<span class="mtag none" data-tag="" title="Label weghalen">✕</span></div>';}
+  if(tags.length){h+='<div class="sepm"></div>';h+='<div class="mi-tags">'+tags.map(tg=>`<span class="mtag" data-tag="${esc(tg.id)}" style="background:${esc(tg.color)}" title="${esc(tg.name)}"></span>`).join('')+'<span class="mtag none" data-tag="" title="Label weghalen">✕</span></div>';}
   h+='<div class="sepm"></div>';
   h+=it('🗑','Verwijderen','delete','danger','Del');
   const m=document.createElement('div');m.className='ctxmenu';m.id='ctxMenu';m.innerHTML=h;
@@ -861,7 +882,7 @@ async function openLsSub(anchor,paths){
   let devices=[];try{if(invoke)devices=await invoke('localsend_discover');}catch(e){}
   if(!document.getElementById('lsSub'))return;
   if(!devices.length){sub.innerHTML='<div class="mi disabled"><span class="ico">🔌</span>Geen apparaten gevonden</div><div class="mi disabled" style="opacity:.6;font-size:11px">Open LocalSend op je telefoon/pc in hetzelfde netwerk</div>';return;}
-  sub.innerHTML=devices.map((d,i)=>`<div class="mi lsdev" data-i="${i}"><span class="ico">${d.deviceType==='mobile'?'📱':'💻'}</span>${d.alias}</div>`).join('');
+  sub.innerHTML=devices.map((d,i)=>`<div class="mi lsdev" data-i="${i}"><span class="ico">${d.deviceType==='mobile'?'📱':'💻'}</span>${esc(d.alias)}</div>`).join('');
   sub.querySelectorAll('.lsdev').forEach(el=>el.onclick=async ev=>{ev.stopPropagation();const d=devices[+el.dataset.i];el.innerHTML='<span class="ico">⏳</span>Versturen…';try{await invoke('localsend_send',{device:d,paths});hideCtxMenu();flash('Verstuurd via LocalSend');}catch(e){hideCtxMenu();alert('LocalSend versturen mislukt:\n'+e);}});
 }
 document.addEventListener('click',hideCtxMenu);
@@ -980,6 +1001,7 @@ document.addEventListener('keydown',e=>{
   else if(cmd&&k==='a'){e.preventDefault();const ss=tab().selSet;ss.clear();displayed.forEach(x=>ss.add(x.path));markSel();}
   else if(cmd&&k==='c'){if(tab().selSet.size)runCtx('copy');}
   else if(cmd&&k==='x'){if(tab().selSet.size)runCtx('cut');}
+  else if(cmd&&alt&&k==='v'){e.preventDefault();specialPasteRename();}
   else if(cmd&&k==='v'){runCtx('paste');}
   else if(cmd&&k==='t'){e.preventDefault();newTab();}
   else if(cmd&&k==='w'){e.preventDefault();if(panes.length>1)exitSplit();else if(tabs.length>1)closeTab(aIdx());}
@@ -1012,6 +1034,28 @@ function startRename(el,f){
   inp.onclick=e=>e.stopPropagation();inp.ondblclick=e=>e.stopPropagation();
 }
 
+// Speciale plak-hernoem (Ctrl+Alt+V): neem klembordtekst, vervang '-' door '_'
+// en hang _01, _02, ... achter elk geselecteerd bestand (extensie blijft).
+async function specialPasteRename(){
+  if(!LIVE)return;
+  const order=displayed.filter(x=>tab().selSet.has(x.path));
+  const list=order.length?order:selEntries();
+  if(!list.length){flash('Selecteer eerst bestanden');return;}
+  let text='';try{text=await invoke('clipboard_text');}catch(e){try{text=await navigator.clipboard.readText();}catch(e2){alert('Kon klembord niet lezen.');return;}}
+  const base=(text||'').trim().replace(/[\\/:*?"<>|]/g,'').replace(/-/g,'_');
+  if(!base){alert('Geen tekst op het klembord.');return;}
+  const n=list.length;let i=0,fail=0;
+  for(const f of list){
+    i++;
+    const dot=f.name.lastIndexOf('.');
+    const ext=(!f.isDir&&dot>0)?f.name.slice(dot):'';
+    const nv=base+'_'+String(i).padStart(2,'0')+ext;
+    try{const np=await invoke('rename',{path:f.path,newName:nv});f.name=nv;f.path=np;}catch(e){fail++;}
+  }
+  await render();
+  flash(fail?((n-fail)+' hernoemd, '+fail+' mislukt'):(n+' hernoemd'));
+}
+
 function applyPreviewLayout(){
   document.getElementById('app').classList.toggle('preview-open',previewEnabled);
   document.getElementById('preview').classList.toggle('open',previewEnabled);
@@ -1033,9 +1077,9 @@ async function updatePreview(f){
       if(canThumb(k)&&toAssetUrl)thumb=`<div class="pvt img pending" data-img="${encodeURIComponent(k.path)}"></div>`;
       else if(k.isDir&&toAssetUrl)thumb=`<div class="pvt img pending folderprev" data-folder="${encodeURIComponent(k.path)}"></div>`;
       else thumb=`<div class="pvt" style="color:${TYPE_COLOR[t2]||'#90a0b8'}">${glyphSVG(t2)}</div>`;
-      return `<div class="pv-item" data-p="${encodeURIComponent(k.path)}" data-d="${k.isDir?1:0}">${thumb}<span class="pv-nm">${k.name}</span></div>`;
+      return `<div class="pv-item" data-p="${encodeURIComponent(k.path)}" data-d="${k.isDir?1:0}">${thumb}<span class="pv-nm">${esc(k.name)}</span></div>`;
     }).join(''):'<div class="pv-empty"><small>Lege map</small></div>';
-    b.innerHTML=`<div class="pv-head"><h4>${f.name}</h4><div class="pv-toggle"><button data-l="list" class="${pvLayout==='list'?'on':''}" title="Kolom">☰</button><button data-l="grid" class="${pvLayout==='grid'?'on':''}" title="Raster">▦</button></div></div><div class="pmeta"><b>Map</b> · ${fmtDate(f.modified)}</div><div class="pv-cont ${pvLayout}" id="pvCont">${items}</div>`;
+    b.innerHTML=`<div class="pv-head"><h4>${esc(f.name)}</h4><div class="pv-toggle"><button data-l="list" class="${pvLayout==='list'?'on':''}" title="Kolom">☰</button><button data-l="grid" class="${pvLayout==='grid'?'on':''}" title="Raster">▦</button></div></div><div class="pmeta"><b>Map</b> · ${fmtDate(f.modified)}</div><div class="pv-cont ${pvLayout}" id="pvCont">${items}</div>`;
     const cont=document.getElementById('pvCont');
     b.querySelectorAll('.pv-toggle button').forEach(btn=>btn.onclick=()=>{pvLayout=btn.dataset.l;SS('pvLayout',pvLayout);updatePreview(f);});
     cont.querySelectorAll('.pv-item').forEach(it=>it.ondblclick=()=>{const p=decodeURIComponent(it.dataset.p);if(it.dataset.d==='1')navigate(p);else openPath(p);});
@@ -1048,17 +1092,17 @@ async function updatePreview(f){
     if(!dim&&LIVE){await ensureDims([f]);dim=dimCache.get(f.path);}
     if(tok!==pvToken)return;
     const url=toAssetUrl?toAssetUrl(f.path):'';
-    b.innerHTML=`${url?`<img src="${url}" alt="">`:''}<h4>${f.name}</h4>
-      <div class="pmeta"><b>Type:</b> ${(f.ext||'').toUpperCase()||'—'}<br><b>Grootte:</b> ${fmtSize(f.size)||'—'}<br>
+    b.innerHTML=`${url?`<img src="${esc(url)}" alt="">`:''}<h4>${esc(f.name)}</h4>
+      <div class="pmeta"><b>Type:</b> ${esc((f.ext||'').toUpperCase())||'—'}<br><b>Grootte:</b> ${fmtSize(f.size)||'—'}<br>
       <b>Afmetingen:</b> ${dim&&dim[0]?dim[0]+'×'+dim[1]+' px':'—'}<br><b>Gewijzigd:</b> ${fmtDate(f.modified)}</div>
-      <div class="ppath">${f.path}</div><button class="btn" id="pvOpen" style="margin-top:14px">Openen</button>`;
+      <div class="ppath">${esc(f.path)}</div><button class="btn" id="pvOpen" style="margin-top:14px">Openen</button>`;
     const ob=document.getElementById('pvOpen');if(ob)ob.onclick=()=>openPath(f.path);
     return;
   }
   // ---- Overig bestand: info ----
-  b.innerHTML=`<div class="pv-bigicon" style="color:${SMALL_ICON[typeOf(f)]||'#90a0b8'}">${glyphSVG(typeOf(f))}</div><h4>${f.name}</h4>
-    <div class="pmeta"><b>Type:</b> ${(f.ext||'').toUpperCase()||'—'}<br><b>Grootte:</b> ${fmtSize(f.size)||'—'}<br><b>Gewijzigd:</b> ${fmtDate(f.modified)}</div>
-    <div class="ppath">${f.path}</div><button class="btn" id="pvOpen" style="margin-top:14px">Openen</button>`;
+  b.innerHTML=`<div class="pv-bigicon" style="color:${SMALL_ICON[typeOf(f)]||'#90a0b8'}">${glyphSVG(typeOf(f))}</div><h4>${esc(f.name)}</h4>
+    <div class="pmeta"><b>Type:</b> ${esc((f.ext||'').toUpperCase())||'—'}<br><b>Grootte:</b> ${fmtSize(f.size)||'—'}<br><b>Gewijzigd:</b> ${fmtDate(f.modified)}</div>
+    <div class="ppath">${esc(f.path)}</div><button class="btn" id="pvOpen" style="margin-top:14px">Openen</button>`;
   const ob=document.getElementById('pvOpen');if(ob)ob.onclick=()=>openPath(f.path);
 }
 
@@ -1078,15 +1122,15 @@ async function openProps(ents){
     document.getElementById('pmClose').onclick=close;return;
   }
   const f=ents[0],t=typeOf(f),loc=parent(f.path);
-  const icon=(t==='image'&&toAssetUrl)?`<img src="${toAssetUrl(f.path)}" alt="">`:`<span style="color:${TYPE_COLOR[t]||'#90a0b8'}">${glyphSVG(t)}</span>`;
-  let rows=`<div class="pm-row"><span class="pm-k">Type</span><span class="pm-v">${f.isDir?'Map':((f.ext||'').toUpperCase()||'Bestand')+(f.ext?'-bestand':'')}</span></div>
-    <div class="pm-row"><span class="pm-k">Locatie</span><span class="pm-v">${loc}</span></div>`;
+  const icon=(t==='image'&&toAssetUrl)?`<img src="${esc(toAssetUrl(f.path))}" alt="">`:`<span style="color:${TYPE_COLOR[t]||'#90a0b8'}">${glyphSVG(t)}</span>`;
+  let rows=`<div class="pm-row"><span class="pm-k">Type</span><span class="pm-v">${f.isDir?'Map':esc((f.ext||'').toUpperCase()||'Bestand')+(f.ext?'-bestand':'')}</span></div>
+    <div class="pm-row"><span class="pm-k">Locatie</span><span class="pm-v">${esc(loc)}</span></div>`;
   if(f.isDir)rows+=`<div class="pm-row"><span class="pm-k">Grootte</span><span class="pm-v" id="pmSize">… berekenen</span></div><div class="pm-row"><span class="pm-k">Bevat</span><span class="pm-v" id="pmCount">…</span></div>`;
   else{rows+=`<div class="pm-row"><span class="pm-k">Grootte</span><span class="pm-v">${fmtSize(f.size)||'0 KB'} <span style="color:var(--text-soft)">(${fmtBytes(f.size)})</span></span></div>`;if(t==='image')rows+=`<div class="pm-row"><span class="pm-k">Afmetingen</span><span class="pm-v" id="pmDim">…</span></div>`;}
   rows+=`<div class="pm-row"><span class="pm-k">Gewijzigd</span><span class="pm-v">${f.modified?new Date(f.modified).toLocaleString('nl-NL'):'—'}</span></div>
     <div class="pm-row"><span class="pm-k">Gemaakt</span><span class="pm-v">${f.created?new Date(f.created).toLocaleString('nl-NL'):'—'}</span></div>
-    <div class="pm-row"><span class="pm-k">Pad</span><span class="pm-v">${f.path}</span></div>`;
-  m.innerHTML=`<div class="pm-top"><div class="pm-ic">${icon}</div><div class="pm-name">${f.name}</div></div><div class="pm-rows">${rows}</div>
+    <div class="pm-row"><span class="pm-k">Pad</span><span class="pm-v">${esc(f.path)}</span></div>`;
+  m.innerHTML=`<div class="pm-top"><div class="pm-ic">${icon}</div><div class="pm-name">${esc(f.name)}</div></div><div class="pm-rows">${rows}</div>
     <div class="pm-actions"><button class="btn ghost" id="pmNative">Windows…</button><button class="btn ghost" id="pmOpen">Openen</button><button class="btn" id="pmClose">Sluiten</button></div>`;
   document.getElementById('pmClose').onclick=close;
   const nb=document.getElementById('pmNative');if(nb)nb.onclick=()=>{if(LIVE)invoke('shell_properties',{path:f.path}).catch(e=>alert('Eigenschappen: '+e));};
@@ -1151,8 +1195,8 @@ function setBreadcrumb(path){
   const bc=document.getElementById('breadcrumb');
   if(!path){bc.innerHTML='<span class="crumb last" data-tauri-drag-region>Start</span>';return;}
   const parts=path.split(/[\\/]/).filter(Boolean);let acc='',html='';
-  if(/^[A-Za-z]:/.test(path)){acc=parts[0]+SEP;html+=`<span class="crumb" data-tauri-drag-region data-p="${acc}">${parts[0]}</span>`;parts.shift();}else acc=SEP;
-  parts.forEach((p,i)=>{acc=acc.endsWith(SEP)?acc+p:acc+SEP+p;const last=i===parts.length-1;html+=`<span class="sep" data-tauri-drag-region>/</span><span class="crumb ${last?'last':''}" data-tauri-drag-region data-p="${acc}">${p}</span>`;});
+  if(/^[A-Za-z]:/.test(path)){acc=parts[0]+SEP;html+=`<span class="crumb" data-p="${esc(acc)}">${esc(parts[0])}</span>`;parts.shift();}else acc=SEP;
+  parts.forEach((p,i)=>{acc=acc.endsWith(SEP)?acc+p:acc+SEP+p;const last=i===parts.length-1;html+=`<span class="sep" data-tauri-drag-region>/</span><span class="crumb ${last?'last':''}" data-p="${esc(acc)}">${esc(p)}</span>`;});
   bc.innerHTML=html;bc.querySelectorAll('.crumb').forEach(c=>c.onclick=()=>{if(c.dataset.p)navigate(c.dataset.p);});
 }
 function updateNav(){document.getElementById('navBack').disabled=!tab().history.length;const fwd=document.getElementById('navFwd');if(fwd)fwd.style.display=(tab().future&&tab().future.length)?'':'none';}
@@ -1216,7 +1260,7 @@ function renderNav(){
     const row=document.createElement('div');row.className='side-item'+(tab().path===it.path?' active':'');
     row.draggable=true;
     const badge=it.kind==='cloud'?'<span class="cloud-badge"></span>':'';
-    row.innerHTML=`${sideIconHTML(it)}<span class="nm">${it.name}</span>${badge}`;
+    row.innerHTML=`${sideIconHTML(it)}<span class="nm">${esc(it.name)}</span>${badge}`;
     if(it.custom){const rm=document.createElement('button');rm.className='rm';rm.textContent='✕';rm.title='Verwijderen';rm.onclick=e=>{e.stopPropagation();shortcuts=shortcuts.filter(s=>s.path!==it.path);SS('shortcuts',shortcuts);renderNav();};row.appendChild(rm);}
     row.dataset.path=it.path;
     row.onclick=()=>navigate(it.path);
@@ -1273,7 +1317,7 @@ if(LS('prevW'))document.documentElement.style.setProperty('--prev-w',LS('prevW')
 function renderDisks(locs){
   const wrap=document.getElementById('diskList');const disks=locs.filter(l=>l.total>0);
   wrap.innerHTML=disks.map(d=>{const used=d.total-d.free,pct=Math.min(100,Math.round(used/d.total*100));const label=d.name.replace('Schijf ','').replace(/[()]/g,'');
-    return `<div class="disk ${pct>=90?'warn':''}"><div class="dh"><b>${label}</b><span>${fmtGB(d.free)} vrij / ${fmtGB(d.total)}</span></div><div class="bar"><div class="fill" style="width:${pct}%"></div></div></div>`;}).join('');
+    return `<div class="disk ${pct>=90?'warn':''}"><div class="dh"><b>${esc(label)}</b><span>${fmtGB(d.free)} vrij / ${fmtGB(d.total)}</span></div><div class="bar"><div class="fill" style="width:${pct}%"></div></div></div>`;}).join('');
 }
 
 /* ===== Locaties laden ===== */
@@ -1308,7 +1352,7 @@ function renderTagSidebar(){
   tags.forEach(tg=>{
     const count=pathsWithTag(tg.id).length;
     const row=document.createElement('div');row.className='side-item';
-    row.innerHTML=`<span class="tagdot" style="width:12px;height:12px;margin:0 3px;background:${tg.color}"></span><span class="nm">${tg.name}</span>${count?`<span class="tcount">${count}</span>`:''}`;
+    row.innerHTML=`<span class="tagdot" style="width:12px;height:12px;margin:0 3px;background:${esc(tg.color)}"></span><span class="nm">${esc(tg.name)}</span>${count?`<span class="tcount">${count}</span>`:''}`;
     row.onclick=()=>openTagView(tg.id);
     wrap.appendChild(row);
   });
@@ -1317,7 +1361,7 @@ function renderTagSettings(){
   const wrap=document.getElementById('tagList');if(!wrap)return;wrap.innerHTML='';
   tags.forEach(tg=>{
     const row=document.createElement('div');row.className='tagrow';
-    row.innerHTML=`<input type="color" value="${tg.color}"><input class="tagname" value="${tg.name.replace(/"/g,'&quot;')}"><button class="del" title="Verwijderen">✕</button>`;
+    row.innerHTML=`<input type="color" value="${esc(tg.color)}"><input class="tagname" value="${esc(tg.name)}"><button class="del" title="Verwijderen">✕</button>`;
     const color=row.querySelector('input[type=color]'),name=row.querySelector('.tagname'),del=row.querySelector('.del');
     color.oninput=()=>{tg.color=color.value;SS('tags',tags);render();renderTagSidebar();};
     name.onchange=()=>{tg.name=name.value.trim()||tg.name;SS('tags',tags);renderTagSidebar();};
@@ -1376,14 +1420,22 @@ if(LS('scope'))ui.scope=LS('scope');updateScopeBtn();
 vGrid.onclick=()=>{ui.view='grid';vGrid.classList.add('on');vList.classList.remove('on');SS('view','grid');render();};
 vList.onclick=()=>{ui.view='list';vList.classList.add('on');vGrid.classList.remove('on');SS('view','list');render();};
 const cardSize=document.getElementById('cardSize');
+function setCardSize(px){px=Math.max(96,Math.min(300,Math.round(px)));document.documentElement.style.setProperty('--card',px+'px');SS('card',px);cardSize.value=px;}
 cardSize.oninput=e=>{document.documentElement.style.setProperty('--card',e.target.value+'px');SS('card',e.target.value);};
 if(LS('card')){cardSize.value=LS('card');document.documentElement.style.setProperty('--card',LS('card')+'px');}
+// Ctrl + scrollen = in-/uitzoomen op de icoontjes (rasterweergave).
+document.getElementById('filesrow').addEventListener('wheel',e=>{
+  if(!(e.ctrlKey||e.metaKey))return;
+  e.preventDefault();
+  const cur=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card'))||150;
+  setCardSize(cur+(e.deltaY<0?14:-14));
+},{passive:false});
 if(LS('view')==='list'){ui.view='list';vList.classList.add('on');vGrid.classList.remove('on');}
 
 /* ===== Instellingen: paden / excel ===== */
 function renderPaths(){
   const rl=document.getElementById('rootList'),el=document.getElementById('exclList');
-  const row=(p,arr,save)=>{const d=document.createElement('div');d.className='pathrow';d.innerHTML=`<span>📁 ${p}</span>`;const b=document.createElement('button');b.className='del';b.textContent='✕';b.onclick=()=>{const i=arr.indexOf(p);if(i>=0)arr.splice(i,1);save();renderPaths();};d.appendChild(b);return d;};
+  const row=(p,arr,save)=>{const d=document.createElement('div');d.className='pathrow';d.innerHTML=`<span>📁 ${esc(p)}</span>`;const b=document.createElement('button');b.className='del';b.textContent='✕';b.onclick=()=>{const i=arr.indexOf(p);if(i>=0)arr.splice(i,1);save();renderPaths();};d.appendChild(b);return d;};
   rl.innerHTML='';roots.forEach(p=>rl.appendChild(row(p,roots,()=>SS('roots',roots))));
   el.innerHTML='';excludes.forEach(p=>el.appendChild(row(p,excludes,()=>SS('excludes',excludes))));
 }
@@ -1408,8 +1460,11 @@ radiusSlider.oninput=e=>{document.documentElement.style.setProperty('--radius',e
 if(LS('glass')!=null){glassSlider.value=LS('glass');document.documentElement.style.setProperty('--glass-alpha',LS('glass')/100);}
 if(LS('blur')!=null){blurSlider.value=LS('blur');document.documentElement.style.setProperty('--glass-blur',LS('blur')+'px');}
 if(LS('radius')!=null){radiusSlider.value=LS('radius');document.documentElement.style.setProperty('--radius',LS('radius')+'px');document.documentElement.style.setProperty('--radius-sm',Math.max(6,LS('radius')-8)+'px');}
-document.querySelectorAll('#previewSeg button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#previewSeg button').forEach(x=>x.classList.remove('on'));b.classList.add('on');previewEnabled=b.dataset.pv==='1';SS('previewEnabled',previewEnabled);applyPreviewLayout();updatePreview(tab().selSet.size===1?displayed.find(x=>x.path===tab().sel):null);});
-document.querySelectorAll('#previewSeg button').forEach(x=>x.classList.toggle('on',(x.dataset.pv==='1')===previewEnabled));
+function syncPreviewControls(){document.querySelectorAll('#previewSeg button').forEach(x=>x.classList.toggle('on',(x.dataset.pv==='1')===previewEnabled));const pt=document.getElementById('prevToggle');if(pt)pt.classList.toggle('on',previewEnabled);}
+function setPreviewEnabled(on){previewEnabled=on;SS('previewEnabled',previewEnabled);applyPreviewLayout();syncPreviewControls();updatePreview(tab().selSet.size===1?(displayed.find(x=>x.path===tab().sel)||null):null);}
+document.querySelectorAll('#previewSeg button').forEach(b=>b.onclick=()=>setPreviewEnabled(b.dataset.pv==='1'));
+{const pt=document.getElementById('prevToggle');if(pt)pt.onclick=()=>setPreviewEnabled(!previewEnabled);}
+syncPreviewControls();
 fab.onclick=()=>document.getElementById('panel').classList.toggle('open');
 document.getElementById('closePanel').onclick=()=>document.getElementById('panel').classList.remove('open');
 
