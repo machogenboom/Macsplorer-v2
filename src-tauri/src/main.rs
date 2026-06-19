@@ -1108,30 +1108,32 @@ fn send_mail(paths: Vec<String>) -> Result<(), String> {
 /// accepteren dit wel, in tegenstelling tot een simpele bestand-drop.
 #[cfg(windows)]
 #[tauri::command]
-fn shell_drag(paths: Vec<String>) -> Result<(), String> {
+fn shell_drag(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Com::{IBindCtx, IDataObject};
     use windows::Win32::System::Ole::{
-        IDropSource, OleInitialize, OleUninitialize, DROPEFFECT_COPY, DROPEFFECT_LINK,
-        DROPEFFECT_MOVE,
+        IDropSource, DROPEFFECT_COPY, DROPEFFECT_LINK, DROPEFFECT_MOVE,
     };
-    use windows::Win32::UI::Shell::{BHID_DataObject, SHCreateItemFromParsingName, IShellItem};
+    use windows::Win32::UI::Shell::{
+        BHID_DataObject, SHCreateItemFromParsingName, SHDoDragDrop, IShellItem,
+    };
     let first = match paths.into_iter().next() {
         Some(p) => p,
         None => return Err("geen pad".into()),
     };
-    std::thread::spawn(move || unsafe {
-        let _ = OleInitialize(None);
+    // De sleep MOET op de hoofdthread draaien (die het venster en de muis-invoer
+    // bezit), anders pakt DoDragDrop de lopende muisbeweging niet op. OLE is op
+    // die thread al geinitialiseerd door de webview.
+    app.run_on_main_thread(move || unsafe {
         let w: Vec<u16> = first.encode_utf16().chain(std::iter::once(0)).collect();
-        if let Ok(item) = SHCreateItemFromParsingName::<_, _, IShellItem>(
-            PCWSTR(w.as_ptr()),
-            None::<&IBindCtx>,
-        ) {
+        if let Ok(item) =
+            SHCreateItemFromParsingName::<_, _, IShellItem>(PCWSTR(w.as_ptr()), None::<&IBindCtx>)
+        {
             if let Ok(data) =
                 item.BindToHandler::<_, IDataObject>(None::<&IBindCtx>, &BHID_DataObject)
             {
-                let _ = windows::Win32::UI::Shell::SHDoDragDrop(
+                let _ = SHDoDragDrop(
                     HWND::default(),
                     &data,
                     None::<&IDropSource>,
@@ -1139,8 +1141,8 @@ fn shell_drag(paths: Vec<String>) -> Result<(), String> {
                 );
             }
         }
-        OleUninitialize();
-    });
+    })
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
