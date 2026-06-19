@@ -759,12 +759,6 @@ let clip={mode:null,paths:[]};    // intern klembord (kopiëren/knippen)
 let dragIconPath='';              // sleep-icoon (voor naar buiten slepen)
 async function startNativeDrag(paths){
   if(!LIVE||!paths.length)return;
-  // Eén bestand: sleep precies zoals Verkenner (shell data-object) zodat
-  // strikte drop-zones zoals Figma/Weave het accepteren.
-  if(paths.length===1){
-    try{await invoke('shell_drag',{paths});return;}
-    catch(e){/* val terug op de plugin-sleep hieronder */}
-  }
   const Ch=window.__TAURI__&&window.__TAURI__.core&&window.__TAURI__.core.Channel;
   const onEvent=Ch?new Ch():undefined;
   try{await invoke('plugin:drag|start_drag',{item:paths,image:dragIconPath||paths[0],options:{mode:'copy'},onEvent});}
