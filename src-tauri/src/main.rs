@@ -800,19 +800,76 @@ fn drag_icon() -> Result<String, String> {
     Ok(out.to_string_lossy().to_string())
 }
 
-/// Experimenteel: probeert LocalSend te starten met de geselecteerde bestanden.
-/// LET OP (laag risico): "localsend" wordt via PATH opgezocht. In een omgeving
-/// met een door een aanvaller beheerde PATH-map kan een vals "localsend.exe"
-/// starten. Aanbevolen vervolg: een vast/bekend installatiepad gebruiken.
-/// Argumenten worden los doorgegeven, dus er is geen command-injection.
+/// Zoekt het LocalSend-programma op bekende installatieplekken (i.p.v. blind via
+/// PATH, wat zowel onbetrouwbaar als een PATH-hijack-risico is).
+#[cfg(windows)]
+fn find_localsend_exe() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    let names = ["localsend_app.exe", "LocalSend.exe", "localsend.exe"];
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(la) = std::env::var("LOCALAPPDATA") {
+        dirs.push(PathBuf::from(&la).join("Programs").join("LocalSend"));
+    }
+    for v in ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"] {
+        if let Ok(pf) = std::env::var(v) {
+            dirs.push(PathBuf::from(pf).join("LocalSend"));
+        }
+    }
+    for d in &dirs {
+        for n in &names {
+            let p = d.join(n);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// Geeft de geselecteerde bestanden door aan de (al draaiende) LocalSend-app.
+/// LocalSend opent dan zijn eigen verzendscherm met de apparaten in het netwerk;
+/// Macsplorer doet zelf geen apparaat-detectie meer.
 #[tauri::command]
 fn localsend(paths: Vec<String>) -> Result<(), String> {
-    let mut cmd = std::process::Command::new("localsend");
-    for p in &paths {
-        cmd.arg(p);
+    if paths.is_empty() {
+        return Err("Niets geselecteerd".into());
     }
-    cmd.spawn().map_err(|e| e.to_string())?;
-    Ok(())
+    #[cfg(windows)]
+    {
+        // 1) Bekend installatiepad (betrouwbaar + veilig).
+        if let Some(exe) = find_localsend_exe() {
+            let mut cmd = std::process::Command::new(exe);
+            for p in &paths {
+                cmd.arg(p);
+            }
+            return cmd.spawn().map(|_| ()).map_err(|e| e.to_string());
+        }
+        // 2) Terugval: via PATH (gebruikelijke exe-namen).
+        for name in ["localsend_app.exe", "localsend.exe", "localsend"] {
+            let mut cmd = std::process::Command::new(name);
+            for p in &paths {
+                cmd.arg(p);
+            }
+            if cmd.spawn().is_ok() {
+                return Ok(());
+            }
+        }
+        return Err(
+            "De LocalSend-app is niet gevonden. Installeer LocalSend (localsend.org) \
+             en zorg dat de app draait."
+                .into(),
+        );
+    }
+    #[cfg(not(windows))]
+    {
+        let mut cmd = std::process::Command::new("localsend");
+        for p in &paths {
+            cmd.arg(p);
+        }
+        cmd.spawn()
+            .map(|_| ())
+            .map_err(|_| "De LocalSend-app is niet gevonden.".to_string())
+    }
 }
 
 /// Pictogram van een toepassing (.exe/.msi) via de Shell, gecachet.
@@ -1394,6 +1451,200 @@ fn shell_drag(_paths: Vec<String>) -> Result<(), String> {
     Err("alleen op Windows".into())
 }
 
+/// ===== Dubbels (identieke bestanden zoeken) =====
+
+#[derive(Serialize, Clone)]
+struct DupFile {
+    path: String,
+    name: String,
+    size: u64,
+}
+
+/// Alle schijf-roots (C:\, D:\, ...) op Windows; "/" elders.
+#[cfg(windows)]
+fn drive_roots() -> Vec<String> {
+    let mut v = Vec::new();
+    for c in b'A'..=b'Z' {
+        let root = format!("{}:\\", c as char);
+        if Path::new(&root).exists() {
+            v.push(root);
+        }
+    }
+    v
+}
+#[cfg(not(windows))]
+fn drive_roots() -> Vec<String> {
+    vec!["/".to_string()]
+}
+
+/// Mappen die we bij het zoeken naar dubbels overslaan: Windows-systeemmappen en
+/// andere kwetsbare/ruis-mappen waar je geen bestanden uit wilt verwijderen.
+fn is_protected_dir(path: &std::path::Path) -> bool {
+    if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+        let n = name.to_ascii_lowercase();
+        if n.starts_with('$') {
+            return true; // $Recycle.Bin, $WinREAgent, ...
+        }
+        return matches!(
+            n.as_str(),
+            "windows"
+                | "windows.old"
+                | "winsxs"
+                | "program files"
+                | "program files (x86)"
+                | "programdata"
+                | "appdata"
+                | "system volume information"
+                | "recovery"
+                | "perflogs"
+                | "msocache"
+                | "boot"
+                | "config.msi"
+                | "node_modules"
+                | ".git"
+        );
+    }
+    false
+}
+
+/// Hasht de eerste `n` bytes van een bestand (snelle voorselectie).
+fn hash_prefix(path: &std::path::Path, n: usize) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+    use std::io::Read;
+    let mut f = fs::File::open(path).ok()?;
+    let mut buf = vec![0u8; n];
+    let mut total = 0;
+    while total < n {
+        match f.read(&mut buf[total..]) {
+            Ok(0) => break,
+            Ok(r) => total += r,
+            Err(_) => return None,
+        }
+    }
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    buf[..total].hash(&mut h);
+    Some(h.finish())
+}
+
+/// Hasht de volledige inhoud (definitieve vergelijking; bestanden in dezelfde
+/// groottegroep lezen in dezelfde blokgroottes, dus identieke inhoud -> identieke hash).
+fn hash_full(path: &std::path::Path) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+    use std::io::Read;
+    let mut f = fs::File::open(path).ok()?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    let mut buf = [0u8; 65536];
+    loop {
+        match f.read(&mut buf) {
+            Ok(0) => break,
+            Ok(r) => buf[..r].hash(&mut h),
+            Err(_) => return None,
+        }
+    }
+    Some(h.finish())
+}
+
+fn find_duplicates_blocking(ignored: Vec<String>) -> Vec<Vec<DupFile>> {
+    use ignore::WalkBuilder;
+    use std::collections::HashMap;
+    let ignored: std::collections::HashSet<String> = ignored.into_iter().collect();
+
+    // Stap 1: alle bestanden verzamelen, gegroepeerd op grootte (lege bestanden over slaan).
+    let mut by_size: HashMap<u64, Vec<std::path::PathBuf>> = HashMap::new();
+    for root in drive_roots() {
+        let mut wb = WalkBuilder::new(&root);
+        wb.standard_filters(false)
+            .hidden(false)
+            .follow_links(false)
+            .git_ignore(false)
+            .git_global(false)
+            .git_exclude(false);
+        wb.filter_entry(|e| {
+            if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                !is_protected_dir(e.path())
+            } else {
+                true
+            }
+        });
+        for result in wb.build() {
+            let entry = match result {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                continue;
+            }
+            let p = entry.path();
+            if ignored.contains(&p.to_string_lossy().to_string()) {
+                continue;
+            }
+            let size = match entry.metadata() {
+                Ok(m) => m.len(),
+                Err(_) => continue,
+            };
+            if size == 0 {
+                continue;
+            }
+            by_size.entry(size).or_default().push(p.to_path_buf());
+        }
+    }
+
+    // Stap 2: per groottegroep eerst op prefix-hash, dan op volledige hash.
+    let mut groups: Vec<Vec<DupFile>> = Vec::new();
+    for (size, paths) in by_size {
+        if paths.len() < 2 {
+            continue;
+        }
+        let mut by_prefix: HashMap<u64, Vec<std::path::PathBuf>> = HashMap::new();
+        for p in paths {
+            if let Some(h) = hash_prefix(&p, 8192) {
+                by_prefix.entry(h).or_default().push(p);
+            }
+        }
+        for (_, pre) in by_prefix {
+            if pre.len() < 2 {
+                continue;
+            }
+            let mut by_full: HashMap<u64, Vec<std::path::PathBuf>> = HashMap::new();
+            for p in pre {
+                if let Some(h) = hash_full(&p) {
+                    by_full.entry(h).or_default().push(p);
+                }
+            }
+            for (_, full) in by_full {
+                if full.len() < 2 {
+                    continue;
+                }
+                let files: Vec<DupFile> = full
+                    .into_iter()
+                    .map(|p| DupFile {
+                        name: p
+                            .file_name()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_default(),
+                        path: p.to_string_lossy().to_string(),
+                        size,
+                    })
+                    .collect();
+                groups.push(files);
+            }
+        }
+    }
+    // Grootste verspilling eerst.
+    groups.sort_by(|a, b| b[0].size.cmp(&a[0].size));
+    groups
+}
+
+/// Zoekt op alle schijven naar inhoudelijk identieke bestanden (systeem- en
+/// kwetsbare mappen worden automatisch overgeslagen). `ignored` = paden die de
+/// gebruiker handmatig op negeren heeft gezet.
+#[tauri::command]
+async fn find_duplicates(ignored: Vec<String>) -> Result<Vec<Vec<DupFile>>, String> {
+    tauri::async_runtime::spawn_blocking(move || find_duplicates_blocking(ignored))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Kopieert een afbeelding naar het klembord (om in canvassen zoals Figma te plakken).
 #[tauri::command]
 fn copy_image(path: String) -> Result<(), String> {
@@ -1491,6 +1742,7 @@ fn main() {
             set_drive_label,
             list_apps,
             send_mail,
+            find_duplicates,
             copy_image,
             clipboard_text,
             shell_drag,

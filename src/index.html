@@ -110,8 +110,9 @@ body.resizing *{transition:none !important}
 
 .main{position:relative;grid-area:main;display:flex;flex-direction:column;border-radius:var(--radius);overflow:hidden;min-width:0}
 .filesrow{flex:1;display:flex;min-height:0;min-width:0}
-.pane2{display:none;border-left:1px solid rgba(var(--stroke),.35)}
-.main.split .pane2{display:block}
+.pane2{display:none}
+.main.split .pane2{display:block;border-left:3px solid transparent;border-image:linear-gradient(180deg,rgba(var(--accent),.25),rgba(var(--accent),.8) 50%,rgba(var(--accent),.25)) 1}
+body.dark .main.split .pane2{border-image:linear-gradient(180deg,rgba(var(--accent),.35),rgba(var(--accent),.9) 50%,rgba(var(--accent),.35)) 1}
 .main.split .files{flex:1 1 50%}
 .main.split .files.pane-active{box-shadow:inset 0 2.5px 0 rgb(var(--accent))}
 .main.split-hint::after{content:'';position:absolute;right:0;top:46px;bottom:0;width:42%;background:rgba(var(--accent),.14);border-left:2px dashed rgb(var(--accent));pointer-events:none;z-index:6;border-radius:0 0 var(--radius) 0}
@@ -286,6 +287,19 @@ body.dark .tagdot{box-shadow:0 0 0 1.5px rgba(0,0,0,.4)}
 body.dark ::-webkit-scrollbar-thumb{background:rgba(160,172,196,.5);background-clip:padding-box}
 body.dark ::-webkit-scrollbar-thumb:hover{background:rgba(180,192,216,.75);background-clip:padding-box}
 .empty,.loading{text-align:center;color:var(--text-soft);padding:60px 20px;font-size:14px}
+.dupwrap{padding:16px;overflow-y:auto}
+.dup-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.dup-bar .dup-hint{font-size:11.5px;color:var(--text-soft)}
+.dup-sum{font-size:13px;font-weight:600;color:var(--text);margin:4px 2px 12px}
+.dup-list{display:flex;flex-direction:column;gap:4px}
+.dup-grouph{font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin:14px 2px 5px}
+.dup-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:rgba(var(--panel),.4);border:1px solid rgba(var(--stroke),.35)}
+.dup-row:hover{background:rgba(var(--panel),.6)}
+.dup-path{flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.dup-acts{display:flex;gap:6px;flex-shrink:0}
+.dbtn{border:1px solid rgba(var(--stroke),.45);background:rgba(var(--panel),.55);color:var(--text);font-size:12px;padding:5px 9px;border-radius:9px;cursor:pointer;white-space:nowrap;transition:all .15s}
+.dbtn:hover{background:rgba(var(--accent),.9);color:#fff;border-color:transparent}
+.dbtn.danger:hover{background:#ff453a}
 .modal-bg{position:fixed;inset:0;z-index:70;background:rgba(10,15,28,.45);display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
 .modal-bg.open{display:flex}
 .modal{width:380px;max-width:92vw;max-height:86vh;overflow-y:auto;border-radius:var(--radius);padding:22px}
@@ -349,7 +363,7 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
       <div id="navTags"></div>
       <div class="side-label" style="margin-top:10px">Schijven &amp; cloud</div>
       <div id="navDrives"></div>
-      <div class="side-label" style="margin-top:10px">Apps</div>
+      <div class="side-label" style="margin-top:10px">Extra</div>
       <div id="navApps"></div>
     </div>
     <div class="side-foot">
@@ -410,6 +424,8 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
   <div class="field"><div class="pathlist" id="exclList"></div><button class="btn" id="addExcl">+ Map uitsluiten</button><div class="hint">Deze mappen worden bij zoeken volledig overgeslagen.</div></div>
   <div class="sec">🎨 Weergave</div>
   <div class="field"><label>Voorbeeldpaneel (rechts)</label><div class="seg" id="previewSeg"><button data-pv="1" class="on">Aan</button><button data-pv="0">Uit</button></div></div>
+  <div class="field"><label>Automatisch verversen</label><div class="seg" id="autoRefreshSeg"><button data-ar="1">Aan</button><button data-ar="0" class="on">Uit</button></div>
+    <div class="hint">Aan = nieuwe of gewijzigde bestanden verschijnen vanzelf. Uit = ververs handmatig met de knop of F5.</div></div>
   <div class="field"><label>Accentkleur</label><div class="swatches" id="swatches"></div></div>
   <div class="field"><label>Thema</label><div class="seg" id="themeSeg"><button data-theme="light" class="on">☀️ Licht</button><button data-theme="dark">🌙 Donker</button></div></div>
   <div class="field"><label>Glass-intensiteit</label><input type="range" min="0" max="100" value="55" class="slider" id="glassSlider"></div>
@@ -631,7 +647,7 @@ async function ensureDims(entries){
 }
 
 /* ===== Filters ===== */
-let searchMode=false,tagView=false;
+let searchMode=false,tagView=false,dupView=false;
 function passFilters(f){
   const t=typeOf(f);
   // tijdens zoeken blijven mappen altijd zichtbaar (handig om in te navigeren)
@@ -659,6 +675,7 @@ async function render(){
 }
 async function renderPane(pi){
   const t=tabs[panes[pi]],area=paneArea(pi);if(!t||!area)return;
+  if(dupView&&pi===activePane){area.className='dupwrap';renderDuplicates(area);return;}
   if(ui.dim!=='all'){await ensureDims(t.list);}
   let list=sortEntries(t.list.filter(passFilters));
   if(pi===activePane)document.getElementById('count').textContent=list.length+' items';
@@ -849,6 +866,7 @@ function showCtxMenu(x,y){
   if(hasDir)h+=it('⭐','Aan favorieten toevoegen','pin');
   if(hasDir)h+=it('📂','Map uitpakken (inhoud eruit)','unwrap');
   h+=it('✏️','Hernoemen','rename',single?'':'disabled','F2');
+  h+=it('📋','Plak-hernoemen (klembord)','pasterename','','Ctrl+Alt+V');
   h+=it('✉️','Verzend met mail','mail');
   h+=it('📤','Versturen via LocalSend','localsend');
   if(appsViewActive){h+='<div class="sepm"></div>';h+=it('🙈','Verbergen','hideapp');h+=it('👁','Weer tonen','unhideapp');}
@@ -863,12 +881,8 @@ function showCtxMenu(x,y){
   m.style.left=Math.min(x,innerWidth-r.width-8)+'px';
   m.style.top=Math.min(y,innerHeight-r.height-8)+'px';
   m.querySelectorAll('.mi').forEach(mi=>{
-    if(mi.dataset.a==='localsend')return;
     mi.onclick=()=>{const a=mi.dataset.a;hideCtxMenu();runCtx(a);};
-    mi.onmouseenter=()=>{const s=document.getElementById('lsSub');if(s)s.remove();};
   });
-  const ls=m.querySelector('.mi[data-a="localsend"]');
-  if(ls){ls.classList.add('has-sub');const sp=selPaths();ls.onmouseenter=()=>openLsSub(ls,sp);ls.onclick=e=>{e.stopPropagation();openLsSub(ls,sp);};}
   m.querySelectorAll('.mtag').forEach(d=>d.onclick=ev=>{ev.stopPropagation();const id=d.dataset.tag,paths=selPaths();if(id){paths.forEach(p=>toggleFileTag(p,id));}else{paths.forEach(p=>delete fileTags[p]);SS('fileTags',fileTags);}hideCtxMenu();render();renderTagSidebar();});
 }
 async function openLsSub(anchor,paths){
@@ -910,6 +924,33 @@ function flash(msg){const d=document.createElement('div');d.textContent=msg;d.st
 function renameByPath(p){const el=[...document.querySelectorAll('.card,.row')].find(x=>x.getAttribute('title')===p);if(!el)return;const nameEl=el.querySelector('.name,.nm');const ent=displayed.find(x=>x.path===p);if(nameEl&&ent)startRename(nameEl,ent);}
 async function reloadFolder(){const t=tab();if(searchMode&&t.search){return doSearch(t.search);}if(LIVE){try{t.list=await invoke('read_dir',{path:t.path});}catch(e){}}t.selSet=new Set();await render();}
 
+/* ===== Automatisch verversen (optioneel; standaard uit) ===== */
+let autoRefresh=LS('autoRefresh')===true;
+let arTimer=null;const arSig={};
+function arSignature(list){return (list||[]).map(f=>f.name+'|'+f.size+'|'+f.modified).sort().join('\n');}
+async function autoRefreshTick(){
+  if(!autoRefresh||!LIVE)return;
+  if(dupView||appsViewActive||searchMode)return;                       // niet in speciale weergaven
+  if(['INPUT','TEXTAREA'].includes(document.activeElement&&document.activeElement.tagName))return; // niet tijdens hernoemen/typen
+  if(document.getElementById('ctxMenu'))return;                        // niet met open menu
+  let changed=false;
+  for(const ix of panes){
+    const t=tabs[ix];if(!t||!t.path||t.searching)continue;
+    try{const list=await invoke('read_dir',{path:t.path});
+      const sig=arSignature(list);
+      if(arSig[t.path]!==undefined&&arSig[t.path]!==sig){t.list=list;changed=true;}
+      arSig[t.path]=sig;
+    }catch(e){}
+  }
+  if(changed)render();
+}
+function startAutoRefresh(){if(arTimer){clearInterval(arTimer);arTimer=null;}if(autoRefresh)arTimer=setInterval(autoRefreshTick,3000);}
+function setAutoRefresh(on){autoRefresh=on;SS('autoRefresh',on);
+  document.querySelectorAll('#autoRefreshSeg button').forEach(b=>b.classList.toggle('on',(b.dataset.ar==='1')===on));
+  startAutoRefresh();}
+{const seg=document.getElementById('autoRefreshSeg');if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>setAutoRefresh(b.dataset.ar==='1'));}
+setAutoRefresh(autoRefresh);
+
 async function runCtx(a){
   const paths=selPaths(),ents=selEntries(),dir=tab().path;
   if(!paths.length&&a!=='paste')return;
@@ -923,8 +964,9 @@ async function runCtx(a){
     else if(a==='copyimg'){if(!LIVE)return;const im=ents.find(e=>!e.isDir&&typeOf(e)==='image');if(!im)return;try{await invoke('copy_image',{path:im.path});flash('Afbeelding gekopieerd — plak met Ctrl+V');}catch(e){alert('Kopiëren mislukt: '+e);}}
     else if(a==='group'){if(!LIVE)return;const np=await invoke('create_folder',{parent:dir,name:'Nieuwe map'});await invoke('move_paths',{paths,destDir:np});await reloadFolder();renameByPath(np);}
     else if(a==='rename'){if(paths.length===1)renameByPath(paths[0]);}
+    else if(a==='pasterename'){specialPasteRename();}
     else if(a==='delete'){if(!LIVE)return;await invoke('delete_paths',{paths});await reloadFolder();flash(paths.length+' naar prullenbak');}
-    else if(a==='localsend'){if(!LIVE)return;try{await invoke('localsend',{paths});flash('LocalSend gestart');}catch(e){alert('LocalSend kon niet gestart worden. Is het geïnstalleerd en in PATH?\n\n'+e);}}
+    else if(a==='localsend'){if(!LIVE)return;try{await invoke('localsend',{paths});flash('Geopend in LocalSend');}catch(e){alert('Kon LocalSend niet openen:\n\n'+e);}}
     else if(a==='newtab'){const d=ents.find(x=>x.isDir)||ents[0];if(d&&d.isDir){tabs.push(mkTab(d.path));panes[activePane]=tabs.length-1;renderTabs();navigate(d.path);}}
     else if(a==='location'){const p=paths[0];if(p){const par=parent(p);await navigate(par);const t2=tab();t2.selSet=new Set([p]);t2.sel=p;setTimeout(()=>{markSel();const el=[...document.querySelectorAll('.card,.row')].find(x=>x.getAttribute('title')===p);if(el)el.scrollIntoView({block:'center'});},80);}}
     else if(a==='copypath'){copyClip(paths.join('\r\n'));flash(paths.length>1?paths.length+' paden gekopieerd':'Pad gekopieerd');}
@@ -1001,7 +1043,7 @@ document.addEventListener('keydown',e=>{
   else if(cmd&&k==='a'){e.preventDefault();const ss=tab().selSet;ss.clear();displayed.forEach(x=>ss.add(x.path));markSel();}
   else if(cmd&&k==='c'){if(tab().selSet.size)runCtx('copy');}
   else if(cmd&&k==='x'){if(tab().selSet.size)runCtx('cut');}
-  else if(cmd&&alt&&k==='v'){e.preventDefault();specialPasteRename();}
+  else if(cmd&&alt&&(k==='v'||e.code==='KeyV')){e.preventDefault();specialPasteRename();}
   else if(cmd&&k==='v'){runCtx('paste');}
   else if(cmd&&k==='t'){e.preventDefault();newTab();}
   else if(cmd&&k==='w'){e.preventDefault();if(panes.length>1)exitSplit();else if(tabs.length>1)closeTab(aIdx());}
@@ -1216,7 +1258,7 @@ async function navigate(path,fromHist){
   const t=tab();
   document.getElementById('searchInput').value='';t.search='';
   if(!fromHist&&t.path!==path){if(t.path)t.history.push(t.path);t.future=[];}
-  t.path=path;t.title=path?baseName(path):'Start';t.sel=null;t.selSet=new Set();t.anchor=null;t.expanded=new Set();t.childCache=new Map();searchMode=false;tagView=false;
+  t.path=path;t.title=path?baseName(path):'Start';t.sel=null;t.selSet=new Set();t.anchor=null;t.expanded=new Set();t.childCache=new Map();searchMode=false;tagView=false;dupView=false;
   if(ui.types.has('folder')){ui.types.clear();document.querySelectorAll('#typeFilters .chip').forEach(c=>c.classList.remove('on'));}
   ui.sort=(path&&sortByPath[path])||LS('sort')||'date';try{updateAdvBtns();}catch(e){}
   appsViewActive=false;try{updateAppsBtn();}catch(e){}
@@ -1334,16 +1376,85 @@ async function loadLocations(){
 /* ===== Apps ===== */
 let appsCache=null,appsViewActive=false,showHiddenApps=false;
 let hiddenApps=LS('hiddenApps')||[];
-function renderApps(){const w=document.getElementById('navApps');if(!w)return;w.innerHTML='';const row=document.createElement('div');row.className='side-item';row.innerHTML=`<span class="ic">⚙️</span><span class="nm">Alle programma's</span>`;row.onclick=openAppsView;w.appendChild(row);}
+function renderApps(){const w=document.getElementById('navApps');if(!w)return;w.innerHTML='';
+  const row=document.createElement('div');row.className='side-item';row.innerHTML=`<span class="ic">⚙️</span><span class="nm">Alle programma's</span>`;row.onclick=openAppsView;w.appendChild(row);
+  const dup=document.createElement('div');dup.className='side-item';dup.innerHTML=`<span class="ic">🧬</span><span class="nm">Dubbels</span>`;dup.onclick=openDuplicatesView;w.appendChild(dup);}
 function updateAppsBtn(){const b=document.getElementById('appsHidden');if(!b)return;b.style.display=appsViewActive?'':'none';b.textContent=showHiddenApps?'👁 Verberg verborgen':'👁 Verborgen tonen';}
 function applyAppsList(){const t=tab();const arr=appsCache||[];t.list=showHiddenApps?arr:arr.filter(a=>!hiddenApps.includes(a.path));t.searching=false;render();}
 {const b=document.getElementById('appsHidden');if(b)b.onclick=()=>{showHiddenApps=!showHiddenApps;updateAppsBtn();applyAppsList();};}
 async function openAppsView(){
-  const t=tab();searchMode=true;tagView=true;appsViewActive=true;t.search='';t.selSet=new Set();document.getElementById('searchInput').value='';
+  const t=tab();searchMode=true;tagView=true;appsViewActive=true;dupView=false;t.search='';t.selSet=new Set();document.getElementById('searchInput').value='';
   document.getElementById('locTitle').textContent='Apps (.exe)';setBreadcrumb('');closePreview();updateAppsBtn();
   document.querySelectorAll('.side-item').forEach(x=>x.classList.remove('active'));
   if(LIVE){t.searching=true;render();if(!appsCache){try{appsCache=await invoke('list_apps');}catch(e){appsCache=[];}}applyAppsList();}
   else{appsCache=SAMPLE.filter(f=>(f.ext||'')==='exe');applyAppsList();}
+}
+
+/* ===== Dubbels (identieke bestanden) ===== */
+let dupIgnored=LS('dupIgnored')||[];   // paden die de gebruiker negeert
+let dupGroups=null;                    // laatste zoekresultaat (array van groepen)
+let dupBusy=false, dupShowIgnored=false;
+function openDuplicatesView(){
+  const t=tab();searchMode=false;tagView=false;appsViewActive=false;dupView=true;updateAppsBtn();
+  t.search='';t.selSet=new Set();document.getElementById('searchInput').value='';
+  document.getElementById('locTitle').textContent='Dubbels';document.getElementById('count').textContent='';
+  setBreadcrumb('');closePreview();
+  document.querySelectorAll('.side-item').forEach(x=>x.classList.remove('active'));
+  render();
+}
+async function runDupScan(){
+  if(!LIVE){alert('Dubbels zoeken werkt in de Macsplorer-app.');return;}
+  dupBusy=true;dupShowIgnored=false;render();
+  try{dupGroups=await invoke('find_duplicates',{ignored:dupIgnored});}
+  catch(e){dupGroups=[];alert('Dubbels zoeken mislukt:\n'+e);}
+  dupBusy=false;render();
+}
+function dupIgnore(path){if(!dupIgnored.includes(path))dupIgnored.push(path);SS('dupIgnored',dupIgnored);
+  if(dupGroups)dupGroups=dupGroups.map(g=>g.filter(f=>f.path!==path)).filter(g=>g.length>1);render();}
+function dupUnignore(path){dupIgnored=dupIgnored.filter(p=>p!==path);SS('dupIgnored',dupIgnored);render();}
+async function dupDelete(path){
+  if(!LIVE)return;
+  try{await invoke('delete_paths',{paths:[path]});flash('Naar prullenbak');}
+  catch(e){alert('Verwijderen mislukt: '+e);return;}
+  if(dupGroups)dupGroups=dupGroups.map(g=>g.filter(f=>f.path!==path)).filter(g=>g.length>1);render();
+}
+function dupOpenLocation(path){const par=parent(path);if(par){navigate(par);setTimeout(()=>{const t2=tab();t2.selSet=new Set([path]);t2.sel=path;markSel();const el=[...document.querySelectorAll('.card,.row')].find(x=>x.getAttribute('title')===path);if(el)el.scrollIntoView({block:'center'});},120);}}
+function renderDuplicates(area){
+  const ignN=dupIgnored.length;
+  let h=`<div class="dup-bar">
+    <button class="btn" id="dupScan" ${dupBusy?'disabled':''}>🔍 Zoek dubbels</button>
+    <button class="btn ghost" id="dupIgnBtn">${dupShowIgnored?'← Terug naar dubbels':'🚫 Genegeerd ('+ignN+')'}</button>
+    <span class="dup-hint">Systeem- en kwetsbare mappen worden automatisch overgeslagen.</span>
+  </div>`;
+  if(dupShowIgnored){
+    if(!ignN)h+=`<div class="empty">Geen genegeerde bestanden.</div>`;
+    else h+=`<div class="dup-list">`+dupIgnored.map(p=>`<div class="dup-row"><span class="dup-path" title="${esc(p)}">${esc(p)}</span><span class="dup-acts"><button class="dbtn" data-act="unignore" data-p="${esc(p)}">↩ Niet meer negeren</button></span></div>`).join('')+`</div>`;
+  } else if(dupBusy){
+    h+=`<div class="loading">⏳ Alle schijven doorzoeken… dit kan even duren.</div>`;
+  } else if(dupGroups===null){
+    h+=`<div class="empty">Klik op <b>Zoek dubbels</b> om identieke bestanden te vinden.</div>`;
+  } else if(!dupGroups.length){
+    h+=`<div class="empty">Geen dubbele bestanden gevonden. 🎉</div>`;
+  } else {
+    let wasted=0;dupGroups.forEach(g=>wasted+=g[0].size*(g.length-1));
+    h+=`<div class="dup-sum">${dupGroups.length} groep(en) · ~${fmtSize(wasted)} te besparen</div><div class="dup-list">`;
+    dupGroups.forEach((g,gi)=>{
+      h+=`<div class="dup-grouph">Groep ${gi+1} — ${g.length}× ${fmtSize(g[0].size)}</div>`;
+      g.forEach(f=>{
+        h+=`<div class="dup-row"><span class="dup-path" title="${esc(f.path)}">${esc(f.path)}</span><span class="dup-acts">
+          <button class="dbtn" data-act="loc" data-p="${esc(f.path)}" title="Bestandslocatie openen">📂 Locatie</button>
+          <button class="dbtn" data-act="ignore" data-p="${esc(f.path)}" title="Negeren (laten staan)">🚫 Negeer</button>
+          <button class="dbtn danger" data-act="del" data-p="${esc(f.path)}" title="Naar prullenbak">🗑 Verwijder</button>
+        </span></div>`;
+      });
+    });
+    h+=`</div>`;
+  }
+  area.innerHTML=h;
+  const sb=area.querySelector('#dupScan');if(sb)sb.onclick=runDupScan;
+  const ib=area.querySelector('#dupIgnBtn');if(ib)ib.onclick=()=>{dupShowIgnored=!dupShowIgnored;render();};
+  area.querySelectorAll('.dbtn').forEach(b=>b.onclick=()=>{const p=b.dataset.p,a=b.dataset.act;
+    if(a==='loc')dupOpenLocation(p);else if(a==='ignore')dupIgnore(p);else if(a==='del')dupDelete(p);else if(a==='unignore')dupUnignore(p);});
 }
 
 /* ===== Labels (tags) ===== */
@@ -1372,7 +1483,7 @@ function renderTagSettings(){
 {const ab=document.getElementById('addTag');if(ab)ab.onclick=()=>{tags.push({id:'t'+Date.now(),name:'Nieuw label',color:'#'+Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0')});SS('tags',tags);renderTagSettings();renderTagSidebar();};}
 async function openTagView(id){
   const tg=tagById(id);if(!tg)return;const t=tab();const paths=pathsWithTag(id);
-  searchMode=true;tagView=true;appsViewActive=false;updateAppsBtn();t.search='';t.selSet=new Set();document.getElementById('searchInput').value='';
+  searchMode=true;tagView=true;appsViewActive=false;dupView=false;updateAppsBtn();t.search='';t.selSet=new Set();document.getElementById('searchInput').value='';
   document.getElementById('locTitle').textContent='Label: '+tg.name;setBreadcrumb('');closePreview();
   document.querySelectorAll('.side-item').forEach(x=>x.classList.remove('active'));
   if(!paths.length){t.list=[];render();return;}
