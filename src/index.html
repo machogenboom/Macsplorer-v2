@@ -445,7 +445,7 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
   <div class="sec">⬇️ Updates (GitHub)</div>
   <div class="field"><label>GitHub-repo (eigenaar/repo)</label><input class="repo-in" id="ghRepo" placeholder="bijv. machogenboom/macsplorer" spellcheck="false">
     <button class="btn" id="checkUpd" style="margin-top:10px">Controleer op updates</button>
-    <div class="hint">Maak GitHub-releases met de <code>..._x64-setup.exe</code> erbij en een tag zoals <code>v0.2.0</code>. Macsplorer checkt automatisch bij het starten en kan in één klik bijwerken.</div></div>
+    <div class="hint">Releases moeten het kale <code>Macsplorer.exe</code> bevatten (de GitHub-workflow uploadt dit automatisch) en een tag zoals <code>v0.2.0</code>. Bijwerken vervangt alleen het exe — installatie, snelkoppeling en taakbalk-pin blijven behouden.</div></div>
 </aside>
 
 <div class="modal-bg" id="propBg"><div class="modal glass" id="propModal"></div></div>
@@ -1288,8 +1288,10 @@ async function checkUpdate(silent){
   try{const r=await fetch(`https://api.github.com/repos/${repo}/releases/latest`,{headers:{Accept:'application/vnd.github+json'}});if(!r.ok)throw 0;rel=await r.json();}
   catch(e){if(!silent)alert('Kon niet controleren op updates. Klopt de repo-naam en is er een release?');return;}
   const latest=String(rel.tag_name||'').replace(/^v/i,'');
-  const asset=(rel.assets||[]).find(a=>/setup\.exe$/i.test(a.name))||(rel.assets||[]).find(a=>/\.exe$/i.test(a.name));
-  if(!latest||!asset){if(!silent)alert('Geen installer (.exe) gevonden in de nieuwste release.');return;}
+  // In-place update: gebruik het KALE app-exe (niet de -setup.exe installer),
+  // zodat de installatiemap/snelkoppeling/taakbalk-pin behouden blijven.
+  const asset=(rel.assets||[]).find(a=>/\.exe$/i.test(a.name)&&!/setup/i.test(a.name));
+  if(!latest||!asset){if(!silent)alert('Geen app-bestand (.exe) gevonden in de nieuwste release.\nZorg dat de release het kale Macsplorer.exe bevat (naast de -setup.exe).');return;}
   if(cmpVer(latest,cur)<=0){if(!silent)alert('Je hebt al de nieuwste versie ('+cur+').');return;}
   const bg=document.getElementById('updBg'),m=document.getElementById('updModal');
   m.innerHTML=`<div class="pm-top"><div class="pm-name">Update beschikbaar</div></div>

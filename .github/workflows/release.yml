@@ -46,3 +46,15 @@ jobs:
           releaseName: v${{ steps.ver.outputs.new }}
           releaseDraft: false
           prerelease: false
+
+      # Upload óók het kale app-exe naar de release. De in-app updater vervangt
+      # alleen dit bestand (geen herinstallatie), zodat de taakbalk-pin behouden blijft.
+      - name: Kaal exe meeleveren (voor in-place updates)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          src=$(find src-tauri/target/release -maxdepth 1 -iname 'macsplorer.exe' | head -n1)
+          if [ -z "$src" ]; then echo "Kaal exe niet gevonden"; ls -la src-tauri/target/release; exit 1; fi
+          cp "$src" "Macsplorer.exe"
+          gh release upload "v${{ steps.ver.outputs.new }}" "Macsplorer.exe" --clobber

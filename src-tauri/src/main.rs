@@ -1660,7 +1660,10 @@ fn copy_image(path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Downloadt de nieuwe installer en start die (werkt in-place bij), sluit daarna de app.
+/// Werkt de app bij door ALLEEN het .exe-bestand op zijn plek te vervangen
+/// (geen herinstallatie). Daardoor blijven de installatiemap, snelkoppeling én
+/// de taakbalk-pin intact. Een klein helper-script wacht tot de app sluit,
+/// overschrijft het exe en start de app opnieuw.
 #[tauri::command]
 async fn update_app(url: String) -> Result<(), String> {
     // Alleen https en alleen onze eigen GitHub-release-hosts toestaan. Hierdoor
@@ -1684,27 +1687,73 @@ async fn update_app(url: String) -> Result<(), String> {
         return Err(format!("Download faalde ({})", resp.status()));
     }
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    if bytes.len() < 1024 {
+        return Err("Download lijkt ongeldig (te klein).".into());
+    }
+
     let dir = dirs::cache_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("macsplorer_update");
     let _ = fs::create_dir_all(&dir);
-    // Onvoorspelbare bestandsnaam (anti-TOCTOU); een lokale aanvaller kan de
-    // installer niet vooraf vervangen.
-    let path = dir.join(format!("Macsplorer-setup-{}.exe", unique_token()));
-    fs::write(&path, bytes.as_ref()).map_err(|e| e.to_string())?;
+    let token = unique_token();
+    // Onvoorspelbare bestandsnaam (anti-TOCTOU).
+    let new_exe = dir.join(format!("Macsplorer-new-{token}.exe"));
+    fs::write(&new_exe, bytes.as_ref()).map_err(|e| e.to_string())?;
+
     #[cfg(windows)]
     {
-        std::process::Command::new(&path)
+        let cur_exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let pid = std::process::id();
+        // PowerShell-helper: wacht tot dit proces stopt, vervang het exe op
+        // dezelfde plek (met herhaalde pogingen) en herstart de app.
+        let esc_ps = |p: &std::path::Path| p.to_string_lossy().replace('\'', "''");
+        let script = format!(
+            "$ErrorActionPreference='SilentlyContinue'\r\n\
+             $exe='{exe}'\r\n\
+             $new='{new}'\r\n\
+             $target={pid}\r\n\
+             try {{ Wait-Process -Id $target -Timeout 30 }} catch {{}}\r\n\
+             Start-Sleep -Milliseconds 400\r\n\
+             for ($i=0; $i -lt 40; $i++) {{\r\n\
+             \x20 try {{ Copy-Item -LiteralPath $new -Destination $exe -Force -ErrorAction Stop; break }}\r\n\
+             \x20 catch {{ Start-Sleep -Milliseconds 600 }}\r\n\
+             }}\r\n\
+             Remove-Item -LiteralPath $new -Force\r\n\
+             Start-Process -FilePath $exe\r\n\
+             Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force\r\n",
+            exe = esc_ps(&cur_exe),
+            new = esc_ps(&new_exe),
+            pid = pid
+        );
+        let ps_path = dir.join(format!("macsplorer-update-{token}.ps1"));
+        fs::write(&ps_path, script).map_err(|e| e.to_string())?;
+
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-WindowStyle",
+                "Hidden",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
+            .arg(&ps_path)
+            .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| e.to_string())?;
+
+        // Geef de helper even tijd en sluit dan af zodat het exe vrijkomt.
         std::thread::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_millis(900));
+            std::thread::sleep(std::time::Duration::from_millis(600));
             std::process::exit(0);
         });
     }
     #[cfg(not(windows))]
     {
-        let _ = path;
+        let _ = new_exe;
     }
     Ok(())
 }
