@@ -1786,7 +1786,7 @@ fn copy_image(path: String) -> Result<(), String> {
 /// de taakbalk-pin intact. Een klein helper-script wacht tot de app sluit,
 /// overschrijft het exe en start de app opnieuw.
 #[tauri::command]
-async fn update_app(url: String) -> Result<(), String> {
+async fn update_app(app: tauri::AppHandle, url: String) -> Result<(), String> {
     // Alleen https en alleen onze eigen GitHub-release-hosts toestaan. Hierdoor
     // kan een (eventueel via XSS) aangeroepen update niet naar een willekeurige
     // 'evil.exe' wijzen.
@@ -1808,65 +1808,41 @@ async fn update_app(url: String) -> Result<(), String> {
         return Err(format!("Download faalde ({})", resp.status()));
     }
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    if bytes.len() < 1024 {
-        return Err("Download lijkt ongeldig (te klein).".into());
+    // Controleer dat het echt een Windows-programma (PE) is en geen foutpagina.
+    if bytes.len() < 4096 || &bytes[..2] != b"MZ" {
+        return Err("De download is geen geldig programmabestand (.exe). Controleer of de release het kale Macsplorer.exe bevat.".into());
     }
-
-    let dir = dirs::cache_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("macsplorer_update");
-    let _ = fs::create_dir_all(&dir);
-    let token = unique_token();
-    // Onvoorspelbare bestandsnaam (anti-TOCTOU).
-    let new_exe = dir.join(format!("Macsplorer-new-{token}.exe"));
-    fs::write(&new_exe, bytes.as_ref()).map_err(|e| e.to_string())?;
 
     #[cfg(windows)]
     {
-        // Robuuste in-place update zónder extern script:
-        // Windows staat toe een DRAAIEND .exe te HERNOEMEN (niet verwijderen).
-        // Dus: huidige exe -> ".old", nieuw exe op het originele pad zetten,
-        // de nieuwe versie starten en afsluiten. De ".old" ruimen we op bij de
-        // volgende start. Pad blijft identiek → taakbalk-pin blijft behouden.
+        // In-place update zónder extern script. Windows staat toe een DRAAIEND
+        // .exe te HERNOEMEN (alleen verwijderen mag niet). Dus: huidige exe naar
+        // ".old", de nieuwe bytes op het originele pad schrijven, en daarna via
+        // Tauri's eigen restart() de nieuwe versie starten. Pad blijft identiek
+        // → taakbalk-pin blijft behouden.
         let cur_exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let old_exe = {
             let mut s = cur_exe.clone().into_os_string();
             s.push(".old");
             std::path::PathBuf::from(s)
         };
-        // Eventuele oude rommel opruimen (lukt pas als die niet meer in gebruik is).
         let _ = fs::remove_file(&old_exe);
 
-        // Huidige (draaiende) exe aan de kant zetten.
-        fs::rename(&cur_exe, &old_exe).map_err(|e| {
-            format!("Kon de huidige app niet vrijmaken voor de update: {e}")
-        })?;
-        // Nieuwe exe op het originele pad plaatsen.
-        if let Err(e) = fs::copy(&new_exe, &cur_exe) {
-            // Mislukt → terugdraaien zodat de app bruikbaar blijft.
+        fs::rename(&cur_exe, &old_exe)
+            .map_err(|e| format!("Kon de huidige app niet vrijmaken voor de update: {e}"))?;
+        if let Err(e) = fs::write(&cur_exe, bytes.as_ref()) {
+            // Terugdraaien zodat de app bruikbaar blijft.
             let _ = fs::rename(&old_exe, &cur_exe);
             return Err(format!("Kon de nieuwe versie niet plaatsen: {e}"));
         }
-        let _ = fs::remove_file(&new_exe);
 
-        // Nieuwe versie starten en daarna afsluiten.
-        match std::process::Command::new(&cur_exe).spawn() {
-            Ok(_) => {
-                std::thread::spawn(|| {
-                    std::thread::sleep(std::time::Duration::from_millis(400));
-                    std::process::exit(0);
-                });
-            }
-            Err(e) => {
-                return Err(format!(
-                    "Update geplaatst, maar herstarten mislukte ({e}). Sluit en open de app handmatig."
-                ));
-            }
-        }
+        // Tauri's restart start het exe op het huidige pad (nu de nieuwe versie)
+        // opnieuw en sluit dit proces af. Keert niet terug.
+        app.restart();
     }
     #[cfg(not(windows))]
     {
-        let _ = new_exe;
+        let _ = (&app, &bytes);
     }
     Ok(())
 }
