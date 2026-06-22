@@ -1823,54 +1823,46 @@ async fn update_app(url: String) -> Result<(), String> {
 
     #[cfg(windows)]
     {
+        // Robuuste in-place update zónder extern script:
+        // Windows staat toe een DRAAIEND .exe te HERNOEMEN (niet verwijderen).
+        // Dus: huidige exe -> ".old", nieuw exe op het originele pad zetten,
+        // de nieuwe versie starten en afsluiten. De ".old" ruimen we op bij de
+        // volgende start. Pad blijft identiek → taakbalk-pin blijft behouden.
         let cur_exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let pid = std::process::id();
-        // PowerShell-helper: wacht tot dit proces stopt, vervang het exe op
-        // dezelfde plek (met herhaalde pogingen) en herstart de app.
-        let esc_ps = |p: &std::path::Path| p.to_string_lossy().replace('\'', "''");
-        let script = format!(
-            "$ErrorActionPreference='SilentlyContinue'\r\n\
-             $exe='{exe}'\r\n\
-             $new='{new}'\r\n\
-             $target={pid}\r\n\
-             try {{ Wait-Process -Id $target -Timeout 30 }} catch {{}}\r\n\
-             Start-Sleep -Milliseconds 400\r\n\
-             for ($i=0; $i -lt 40; $i++) {{\r\n\
-             \x20 try {{ Copy-Item -LiteralPath $new -Destination $exe -Force -ErrorAction Stop; break }}\r\n\
-             \x20 catch {{ Start-Sleep -Milliseconds 600 }}\r\n\
-             }}\r\n\
-             Remove-Item -LiteralPath $new -Force\r\n\
-             Start-Process -FilePath $exe\r\n\
-             Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force\r\n",
-            exe = esc_ps(&cur_exe),
-            new = esc_ps(&new_exe),
-            pid = pid
-        );
-        let ps_path = dir.join(format!("macsplorer-update-{token}.ps1"));
-        fs::write(&ps_path, script).map_err(|e| e.to_string())?;
+        let old_exe = {
+            let mut s = cur_exe.clone().into_os_string();
+            s.push(".old");
+            std::path::PathBuf::from(s)
+        };
+        // Eventuele oude rommel opruimen (lukt pas als die niet meer in gebruik is).
+        let _ = fs::remove_file(&old_exe);
 
-        use std::os::windows::process::CommandExt;
-        const DETACHED_PROCESS: u32 = 0x0000_0008;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        std::process::Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-WindowStyle",
-                "Hidden",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-            ])
-            .arg(&ps_path)
-            .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        // Huidige (draaiende) exe aan de kant zetten.
+        fs::rename(&cur_exe, &old_exe).map_err(|e| {
+            format!("Kon de huidige app niet vrijmaken voor de update: {e}")
+        })?;
+        // Nieuwe exe op het originele pad plaatsen.
+        if let Err(e) = fs::copy(&new_exe, &cur_exe) {
+            // Mislukt → terugdraaien zodat de app bruikbaar blijft.
+            let _ = fs::rename(&old_exe, &cur_exe);
+            return Err(format!("Kon de nieuwe versie niet plaatsen: {e}"));
+        }
+        let _ = fs::remove_file(&new_exe);
 
-        // Geef de helper even tijd en sluit dan af zodat het exe vrijkomt.
-        std::thread::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_millis(600));
-            std::process::exit(0);
-        });
+        // Nieuwe versie starten en daarna afsluiten.
+        match std::process::Command::new(&cur_exe).spawn() {
+            Ok(_) => {
+                std::thread::spawn(|| {
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                    std::process::exit(0);
+                });
+            }
+            Err(e) => {
+                return Err(format!(
+                    "Update geplaatst, maar herstarten mislukte ({e}). Sluit en open de app handmatig."
+                ));
+            }
+        }
     }
     #[cfg(not(windows))]
     {
@@ -1879,7 +1871,21 @@ async fn update_app(url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Verwijdert een achtergebleven '<app>.exe.old' van een vorige in-place update.
+/// Wordt bij het opstarten aangeroepen; lukt nu wel omdat het oude bestand niet
+/// meer in gebruik is.
+#[cfg(windows)]
+fn cleanup_old_update() {
+    if let Ok(cur) = std::env::current_exe() {
+        let mut s = cur.into_os_string();
+        s.push(".old");
+        let _ = fs::remove_file(std::path::PathBuf::from(s));
+    }
+}
+
 fn main() {
+    #[cfg(windows)]
+    cleanup_old_update();
     tauri::Builder::default()
         .plugin(tauri_plugin_drag::init())
         .invoke_handler(tauri::generate_handler![
