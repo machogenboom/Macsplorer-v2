@@ -669,6 +669,7 @@ function renderTabs(){
     const d=document.createElement('div');
     const isA=i===aIdx(),inSplit=panes.length>1&&panes.includes(i);
     d.className='tab'+(isA?' on':'')+(inSplit&&!isA?' on2':'');
+    if(t.path)d.dataset.path=t.path;   // doeldoel voor sleep-naar-tabblad
     d.innerHTML=`<span class="tn">${esc(t.title||'Start')}</span>`;
     if(tabs.length>1){const c=document.createElement('button');c.className='tc';c.textContent='✕';c.onclick=e=>{e.stopPropagation();closeTab(i);};d.appendChild(c);}
     d.onclick=()=>{if(suppressClick){suppressClick=false;return;}panes[activePane]=i;syncFromTab();};
@@ -1199,6 +1200,7 @@ function setupNativeDrop(){
   const targetAt=(px,py)=>{const dpr=window.devicePixelRatio||1;const e2=document.elementFromPoint(px/dpr,py/dpr);if(!e2)return null;
     const c=e2.closest('.card,.row');if(c&&c.dataset.dir==='1')return {el:c,path:c.getAttribute('title')};
     const s=e2.closest('.side-item');if(s&&s.dataset.path)return {el:s,path:s.dataset.path};
+    const tb=e2.closest('.tab');if(tb&&tb.dataset.path)return {el:tb,path:tb.dataset.path};
     return null;};
   ev.listen('tauri://drag-over',e=>{const pos=e.payload&&e.payload.position;if(!pos)return;const t=targetAt(pos.x,pos.y);hi(t?t.el:null);});
   ev.listen('tauri://drag-leave',()=>hi(null));
