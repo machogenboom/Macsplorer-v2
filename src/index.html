@@ -538,6 +538,7 @@ let sideOrder=LS('sideOrder')||[];     // volgorde-paden
 let tags=LS('tags')||[{id:'t1',name:'Belangrijk',color:'#ff453a'},{id:'t2',name:'Privé',color:'#30d158'},{id:'t3',name:'Werk',color:'#0a84ff'},{id:'t4',name:'Idee',color:'#ffd60a'}];
 let fileTags=LS('fileTags')||{};       // pad -> [tagId]
 let favIcons=LS('favIcons')||{};       // pad -> eigen icoon-pad
+let driveOpen=LS('driveOpen')||{};     // schijf/cloud-pad -> map die geopend wordt bij klik
 let sortByPath=LS('sortByPath')||{};   // pad -> onthouden sortering
 const dirSizeCache=new Map();
 function tagById(id){return tags.find(t=>t.id===id);}
@@ -1371,13 +1372,14 @@ function renderNav(){
   const items=allNavItems();
   items.forEach(it=>{
     const isFav=it.kind==='fav'||it.kind==='shortcut';
-    const row=document.createElement('div');row.className='side-item'+(tab().path===it.path?' active':'');
+    const openTo=driveOpen[it.path]||it.path;
+    const row=document.createElement('div');row.className='side-item'+((tab().path===it.path||tab().path===openTo)?' active':'');
     row.draggable=true;
     const badge=it.kind==='cloud'?'<span class="cloud-badge"></span>':'';
     row.innerHTML=`${sideIconHTML(it)}<span class="nm">${esc(it.name)}</span>${badge}`;
     if(it.custom){const rm=document.createElement('button');rm.className='rm';rm.textContent='✕';rm.title='Verwijderen';rm.onclick=e=>{e.stopPropagation();shortcuts=shortcuts.filter(s=>s.path!==it.path);SS('shortcuts',shortcuts);renderNav();};row.appendChild(rm);}
     row.dataset.path=it.path;
-    row.onclick=()=>navigate(it.path);
+    row.onclick=()=>navigate(driveOpen[it.path]||it.path);
     row.ondragstart=()=>{dragPath=it.path;row.classList.add('dragging');};
     row.ondragend=()=>{row.classList.remove('dragging');document.querySelectorAll('.side-item').forEach(x=>x.classList.remove('drag-over'));};
     row.ondragover=e=>{e.preventDefault();row.classList.add('drag-over');};
@@ -1392,6 +1394,10 @@ function showSideMenu(it,x,y){
   const mi=(ico,label,act)=>`<div class="mi" data-a="${act}"><span class="ico">${ico}</span>${label}</div>`;
   let h=mi('🖼️','Icoon kiezen…','icon');
   if(favIcons[it.path])h+=mi('↩︎','Standaard icoon','reseticon');
+  if(it.kind==='drive'||it.kind==='cloud'){
+    h+=mi('📂','Openmap instellen…','setopen');
+    if(driveOpen[it.path])h+=mi('↩︎','Openmap terugzetten','resetopen');
+  }
   if(it.kind==='drive')h+=mi('✏️','Naam wijzigen','renamedrive');
   if(it.custom)h+=mi('✕','Snelkoppeling verwijderen','rmshortcut');
   h+='<div class="sepm"></div>'+mi('ⓘ','Eigenschappen','props2');
@@ -1400,6 +1406,11 @@ function showSideMenu(it,x,y){
   m.querySelectorAll('.mi').forEach(b=>b.onclick=async()=>{const a=b.dataset.a;hideCtxMenu();
     if(a==='icon')await pickFavIcon(it.path);
     else if(a==='reseticon'){delete favIcons[it.path];SS('favIcons',favIcons);renderNav();}
+    else if(a==='setopen'){
+      if(!LIVE){const p=prompt('Pad dat geopend moet worden bij klikken:',driveOpen[it.path]||it.path);if(p){driveOpen[it.path]=p;SS('driveOpen',driveOpen);renderNav();flash('Openmap ingesteld');}return;}
+      try{const p=await invoke('pick_folder');if(p){driveOpen[it.path]=p;SS('driveOpen',driveOpen);renderNav();flash('Openmap ingesteld');}}catch(e){alert('Map kiezen mislukt: '+e);}
+    }
+    else if(a==='resetopen'){delete driveOpen[it.path];SS('driveOpen',driveOpen);renderNav();flash('Openmap teruggezet');}
     else if(a==='rmshortcut'){shortcuts=shortcuts.filter(s=>s.path!==it.path);SS('shortcuts',shortcuts);renderNav();}
     else if(a==='renamedrive'){const lab=prompt('Nieuwe schijfnaam:','');if(lab!=null&&LIVE){try{await invoke('set_drive_label',{path:it.path,label:lab});await loadLocations();flash('Schijf hernoemd');}catch(e){alert('Hernoemen mislukt: '+e);}}}
     else if(a==='props2'){if(LIVE)invoke('shell_properties',{path:it.path}).catch(e=>alert('Eigenschappen: '+e));}
