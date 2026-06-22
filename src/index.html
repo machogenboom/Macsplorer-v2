@@ -116,6 +116,17 @@ body.dark .main.split .pane2{border-image:linear-gradient(180deg,rgba(var(--acce
 .main.split .files{flex:1 1 50%}
 .main.split .files.pane-active{box-shadow:inset 0 2.5px 0 rgb(var(--accent))}
 .main.split-hint::after{content:'';position:absolute;right:0;top:46px;bottom:0;width:42%;background:rgba(var(--accent),.14);border-left:2px dashed rgb(var(--accent));pointer-events:none;z-index:6;border-radius:0 0 var(--radius) 0}
+.main.split-hint-h::after{content:'';position:absolute;left:0;right:0;bottom:0;height:42%;background:rgba(var(--accent),.14);border-top:2px dashed rgb(var(--accent));pointer-events:none;z-index:6;border-radius:0 0 var(--radius) var(--radius)}
+.main.split.split-h .filesrow{flex-direction:column}
+.main.split.split-h .pane2{border-left-width:0;border-top:3px solid transparent;border-image:linear-gradient(90deg,rgba(var(--accent),.25),rgba(var(--accent),.8) 50%,rgba(var(--accent),.25)) 1}
+body.dark .main.split.split-h .pane2{border-image:linear-gradient(90deg,rgba(var(--accent),.35),rgba(var(--accent),.9) 50%,rgba(var(--accent),.35)) 1}
+.main.split.split-h .files.pane-active{box-shadow:inset 2.5px 0 0 rgb(var(--accent))}
+.cmdbar{display:flex;align-items:center;gap:5px;padding:8px 14px 0;flex-wrap:wrap}
+.cbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(var(--stroke),.4);background:rgba(var(--panel),.45);color:var(--text);font-size:13px;padding:6px 11px;border-radius:10px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.cbtn:hover{background:rgba(var(--accent),.9);color:#fff;border-color:transparent;transform:translateY(-1px)}
+.cbtn.ic{padding:6px 9px;font-size:15px;line-height:1}
+.cbtn.danger:hover{background:#ff453a}
+.cmd-sep{width:1px;align-self:stretch;margin:2px 4px;background:rgba(var(--stroke),.4)}
 .tabbar{display:flex;align-items:center;gap:6px;padding:9px 12px 0;overflow-x:auto}
 .tab{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:11px 11px 0 0;cursor:pointer;font-size:13px;
   background:rgba(var(--panel),.32);color:var(--text-soft);white-space:nowrap;max-width:200px;border:1px solid transparent;border-bottom:none}
@@ -380,6 +391,19 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
 
   <section class="main glass">
     <div class="tabbar" id="tabbar"></div>
+    <div class="cmdbar" id="cmdbar">
+      <button class="cbtn" id="cmdNew">＋ Nieuw ▾</button>
+      <span class="cmd-sep"></span>
+      <button class="cbtn ic" id="cmdCut" title="Knippen">✂️</button>
+      <button class="cbtn ic" id="cmdCopy" title="Kopiëren">⧉</button>
+      <button class="cbtn ic" id="cmdPaste" title="Plakken">📋</button>
+      <button class="cbtn ic" id="cmdRename" title="Hernoemen">✏️</button>
+      <button class="cbtn ic" id="cmdPasteRename" title="Plak-hernoemen uit klembord">🔤</button>
+      <button class="cbtn ic" id="cmdMirror" title="Afbeelding spiegelen">🪞</button>
+      <button class="cbtn ic" id="cmdShare" title="Delen (mail / LocalSend)">📤</button>
+      <span class="cmd-sep"></span>
+      <button class="cbtn ic danger" id="cmdDelete" title="Verwijderen">🗑️</button>
+    </div>
     <div class="toolbar">
       <h2 id="locTitle">Macsplorer</h2>
       <span class="count" id="count">0 items</span>
@@ -571,16 +595,25 @@ function renderTabs(){
   });
   const add=document.createElement('button');add.className='tab-add';add.textContent='+';add.onclick=newTab;
   tb.appendChild(add);
-  if(panes.length>1){const xs=document.createElement('button');xs.className='tab-add';xs.title='Split sluiten';xs.textContent='⊟';xs.onclick=exitSplit;tb.appendChild(xs);}
+  if(panes.length>1){
+    const od=document.createElement('button');od.className='tab-add';od.title=splitDir==='h'?'Naast elkaar zetten':'Onder elkaar zetten';od.textContent=splitDir==='h'?'⬌':'⬍';od.onclick=toggleSplitDir;tb.appendChild(od);
+    const xs=document.createElement('button');xs.className='tab-add';xs.title='Split sluiten';xs.textContent='⊟';xs.onclick=exitSplit;tb.appendChild(xs);
+  }
 }
+let splitDir=LS('splitDir')||'v';   // 'v' = naast elkaar, 'h' = onder elkaar
+function applySplitClasses(){const m=document.querySelector('.main');const on=panes.length>1;m.classList.toggle('split',on);m.classList.toggle('split-h',on&&splitDir==='h');}
 function enableTabDrag(el,i){
   el.addEventListener('mousedown',e=>{
     if(e.button!==0||e.target.closest('.tc'))return;
     e.preventDefault();
     const sx=e.clientX,sy=e.clientY,main=document.querySelector('.main');let dragging=false;
-    const zone=ev=>{const r=main.getBoundingClientRect();return tabs.length>1&&ev.clientX>r.left+r.width*0.5&&ev.clientY>r.top+44;};
-    const move=ev=>{if(!dragging){if(Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)<6)return;dragging=true;el.classList.add('tabdrag');}main.classList.toggle('split-hint',zone(ev));};
-    const up=ev=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);el.classList.remove('tabdrag');main.classList.remove('split-hint');if(dragging&&zone(ev)){suppressClick=true;enterSplit(i);}};
+    // Sleep naar de rechterhelft = naast elkaar ('v'); naar de onderkant = onder elkaar ('h').
+    const zone=ev=>{const r=main.getBoundingClientRect();if(tabs.length<2)return null;
+      if(ev.clientY>r.top+r.height*0.6)return 'h';
+      if(ev.clientX>r.left+r.width*0.5&&ev.clientY>r.top+44)return 'v';
+      return null;};
+    const move=ev=>{if(!dragging){if(Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)<6)return;dragging=true;el.classList.add('tabdrag');}const z=zone(ev);main.classList.toggle('split-hint',z==='v');main.classList.toggle('split-hint-h',z==='h');};
+    const up=ev=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);el.classList.remove('tabdrag');main.classList.remove('split-hint','split-hint-h');const z=dragging?zone(ev):null;if(z){splitDir=z;SS('splitDir',splitDir);suppressClick=true;enterSplit(i);}};
     document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
   });
 }
@@ -589,10 +622,11 @@ function enterSplit(rightIdx){
   let leftIdx=aIdx();
   if(leftIdx===rightIdx){leftIdx=tabs.findIndex((_,ix)=>ix!==rightIdx);if(leftIdx<0)return;}
   panes=[leftIdx,rightIdx];activePane=1;
-  document.querySelector('.main').classList.add('split');
+  applySplitClasses();
   syncFromTab();
 }
-function exitSplit(){panes=[aIdx()];activePane=0;document.querySelector('.main').classList.remove('split');syncFromTab();}
+function exitSplit(){panes=[aIdx()];activePane=0;document.querySelector('.main').classList.remove('split','split-h');syncFromTab();}
+function toggleSplitDir(){splitDir=splitDir==='h'?'v':'h';SS('splitDir',splitDir);applySplitClasses();renderTabs();}
 function newTab(){const cur=tab().path||(baseLocs[0]&&baseLocs[0].path)||'';tabs.push(mkTab(cur));panes[activePane]=tabs.length-1;renderTabs();navigate(cur);}
 function closeTab(i){
   if(tabs.length<=1)return;
@@ -912,10 +946,39 @@ async function openLsSub(anchor,paths){
 document.addEventListener('click',hideCtxMenu);
 document.addEventListener('scroll',hideCtxMenu,true);
 window.addEventListener('blur',hideCtxMenu);
+// Nieuwe-bestandstypes voor het 'Nieuw'-menu en de werkbalkknop.
+const NEW_TYPES=[
+  {k:'folder',ico:'📁',label:'Map'},
+  {k:'txt',  ico:'📄',label:'Tekstbestand',     name:'Nieuw tekstbestand.txt'},
+  {k:'md',   ico:'📝',label:'Markdown-bestand',  name:'Nieuw bestand.md'},
+  {k:'docx', ico:'🔵',label:'Word-document',     name:'Nieuw document.docx'},
+  {k:'xlsx', ico:'🟢',label:'Excel-werkblad',    name:'Nieuw werkblad.xlsx'},
+  {k:'pptx', ico:'🟠',label:'PowerPoint-presentatie',name:'Nieuwe presentatie.pptx'},
+];
+async function createNew(kind){
+  const dir=tab().path;
+  if(!dir){flash('Open eerst een map');return;}
+  if(!LIVE){flash('Werkt in de Macsplorer-app');return;}
+  try{
+    let np;
+    if(kind==='folder')np=await invoke('create_folder',{parent:dir,name:'Nieuwe map'});
+    else{const t=NEW_TYPES.find(x=>x.k===kind);if(!t)return;np=await invoke('create_file',{parent:dir,name:t.name});}
+    await reloadFolder();renameByPath(np);
+  }catch(e){alert('Aanmaken mislukt: '+e);}
+}
+function showNewMenu(x,y){
+  hideCtxMenu();
+  const h=NEW_TYPES.map(t=>`<div class="mi" data-k="${t.k}"><span class="ico">${t.ico}</span>${t.label}</div>`).join('');
+  const m=document.createElement('div');m.className='ctxmenu';m.id='ctxMenu';m.innerHTML=h;document.body.appendChild(m);
+  const r=m.getBoundingClientRect();m.style.left=Math.min(x,innerWidth-r.width-8)+'px';m.style.top=Math.min(y,innerHeight-r.height-8)+'px';
+  m.querySelectorAll('.mi').forEach(mi=>mi.onclick=()=>{const k=mi.dataset.k;hideCtxMenu();createNew(k);});
+}
 function showEmptyMenu(x,y){
   hideCtxMenu();
   const it=(ico,label,act,cls)=>`<div class="mi ${cls||''}" data-a="${act}"><span class="ico">${ico}</span>${label}</div>`;
-  const h=it('📋','Plakken','paste',clip.paths.length?'':'disabled')+it('📁','Nieuwe map','newfolder')+'<div class="sepm"></div>'+it('☑︎','Alles selecteren','selectall');
+  let h=it('📋','Plakken','paste',clip.paths.length?'':'disabled')+'<div class="sepm"></div>';
+  h+=NEW_TYPES.map(t=>it(t.ico,t.k==='folder'?'Nieuwe map':('Nieuw: '+t.label),'new:'+t.k)).join('');
+  h+='<div class="sepm"></div>'+it('☑︎','Alles selecteren','selectall');
   const m=document.createElement('div');m.className='ctxmenu';m.id='ctxMenu';m.innerHTML=h;document.body.appendChild(m);
   const r=m.getBoundingClientRect();m.style.left=Math.min(x,innerWidth-r.width-8)+'px';m.style.top=Math.min(y,innerHeight-r.height-8)+'px';
   m.querySelectorAll('.mi').forEach(mi=>mi.onclick=()=>{const a=mi.dataset.a;hideCtxMenu();runEmpty(a);});
@@ -924,9 +987,31 @@ async function runEmpty(a){
   const dir=tab().path;
   try{
     if(a==='paste'){if(!clip.paths.length||!LIVE)return;await invoke(clip.mode==='cut'?'move_paths':'copy_paths',{paths:clip.paths,destDir:dir});if(clip.mode==='cut')clip={mode:null,paths:[]};await reloadFolder();}
-    else if(a==='newfolder'){if(!LIVE)return;const np=await invoke('create_folder',{parent:dir,name:'Nieuwe map'});await reloadFolder();renameByPath(np);}
+    else if(a==='newfolder'){await createNew('folder');}
+    else if(a&&a.startsWith('new:')){await createNew(a.slice(4));}
     else if(a==='selectall'){const ss=tab().selSet;ss.clear();displayed.forEach(x=>ss.add(x.path));markSel();}
   }catch(e){alert('Mislukt: '+e);}
+}
+/* ===== Werkbalk-knoppen (commandbar) ===== */
+function showShareMenu(x,y){
+  hideCtxMenu();
+  if(!selPaths().length){flash('Selecteer eerst iets');return;}
+  const h=`<div class="mi" data-a="mail"><span class="ico">✉️</span>Verzend met mail</div><div class="mi" data-a="localsend"><span class="ico">📤</span>Versturen via LocalSend</div>`;
+  const m=document.createElement('div');m.className='ctxmenu';m.id='ctxMenu';m.innerHTML=h;document.body.appendChild(m);
+  const r=m.getBoundingClientRect();m.style.left=Math.min(x,innerWidth-r.width-8)+'px';m.style.top=Math.min(y,innerHeight-r.height-8)+'px';
+  m.querySelectorAll('.mi').forEach(mi=>mi.onclick=()=>{const a=mi.dataset.a;hideCtxMenu();runCtx(a);});
+}
+{
+  const on=(id,fn)=>{const b=document.getElementById(id);if(b)b.onclick=fn;};
+  on('cmdNew',()=>{const r=document.getElementById('cmdNew').getBoundingClientRect();showNewMenu(r.left,r.bottom+4);});
+  on('cmdCut',()=>{if(tab().selSet.size)runCtx('cut');else flash('Selecteer eerst iets');});
+  on('cmdCopy',()=>{if(tab().selSet.size)runCtx('copy');else flash('Selecteer eerst iets');});
+  on('cmdPaste',()=>runEmpty('paste'));
+  on('cmdRename',()=>{const p=selPaths();if(p.length===1)renameByPath(p[0]);else flash('Selecteer één bestand');});
+  on('cmdPasteRename',()=>specialPasteRename());
+  on('cmdMirror',()=>{if(tab().selSet.size)runCtx('mirror');else flash('Selecteer een afbeelding');});
+  on('cmdShare',()=>{const r=document.getElementById('cmdShare').getBoundingClientRect();showShareMenu(r.left,r.bottom+4);});
+  on('cmdDelete',()=>{if(tab().selSet.size)runCtx('delete');else flash('Selecteer eerst iets');});
 }
 document.addEventListener('contextmenu',e=>{if(['INPUT','TEXTAREA'].includes(e.target.tagName))return;if(e.target.closest('.card,.row,.ctxmenu'))return;if(e.target.closest('.files')){e.preventDefault();showEmptyMenu(e.clientX,e.clientY);}else if(!e.target.closest('.panel,.preview')){e.preventDefault();}});
 
