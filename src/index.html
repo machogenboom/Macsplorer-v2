@@ -14,7 +14,7 @@
   --panel:255,255,255; --stroke:255,255,255;
   --shadow:0 18px 50px -12px rgba(30,40,70,.35);
 }
-body.dark{--bg-1:#10131c;--bg-2:#1a1426;--bg-3:#0e1a26;--text:#f2f5fb;--text-soft:#aeb6c8;--panel:120,130,160;--shadow:0 18px 50px -10px rgba(0,0,0,.6)}
+body.dark{--bg-1:#0d1016;--bg-2:#141119;--bg-3:#0c151d;--text:#f2f5fb;--text-soft:#aeb6c8;--panel:30,34,44;--stroke:150,160,190;--shadow:0 18px 50px -10px rgba(0,0,0,.65)}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;color:var(--text);overflow:hidden;
@@ -108,23 +108,52 @@ body.resizing *{transition:none !important}
 .disk.warn .fill{background:linear-gradient(90deg,#ff9f0a,#ff375f)}
 .storage small{font-size:11px;color:var(--text-soft)}
 
-.main{position:relative;grid-area:main;display:flex;flex-direction:column;border-radius:var(--radius);overflow:hidden;min-width:0}
+.main{position:relative;grid-area:main;display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;overflow:visible}
+.main-head{flex:none;border-radius:var(--radius);overflow:hidden}
 .filesrow{flex:1;display:flex;min-height:0;min-width:0}
 .pane2{display:none}
-.main.split .pane2{display:block;border-left:3px solid transparent;border-image:linear-gradient(180deg,rgba(var(--accent),.25),rgba(var(--accent),.8) 50%,rgba(var(--accent),.25)) 1}
-body.dark .main.split .pane2{border-image:linear-gradient(180deg,rgba(var(--accent),.35),rgba(var(--accent),.9) 50%,rgba(var(--accent),.35)) 1}
-.main.split .files{flex:1 1 50%}
-.main.split .files.pane-active{box-shadow:inset 0 2.5px 0 rgb(var(--accent))}
+.main.split .pane2{display:flex}
+/* ===== Split: twee losse glas-kaarten op de achtergrond (zoals zijbalk/hoofdpaneel) ===== */
+.main.split .filesrow{padding:0;gap:0}
+.main.split .files{display:flex;flex-direction:column;padding:0}
+.main.split .files[data-pane="0"]{flex:0 0 var(--split-pos,50%)}
+.main.split .files.pane2{flex:1 1 0}
+.main.split .files.pane-active{border-color:rgba(var(--accent),.8);box-shadow:0 0 0 1.5px rgba(var(--accent),.5),var(--shadow)}
+.main.split #fileArea,.main.split #fileArea1{padding:6px 14px 14px;flex:1}
+/* de ruimte (achtergrond) tussen de twee kaarten, sleepbaar */
+.split-rsz{display:none;flex:0 0 12px;cursor:ew-resize;z-index:8;background:transparent;align-self:stretch;position:relative}
+.main.split .split-rsz{display:block}
+.main.split.split-h .split-rsz{cursor:ns-resize}
+.split-rsz::after{content:'';position:absolute;inset:42% 4px;border-radius:4px;background:rgba(255,255,255,.55);transition:background .15s}
+.main.split.split-h .split-rsz::after{inset:4px 42%}
+.split-rsz:hover::after{background:rgb(var(--accent))}
+.split-rsz:hover::after{background:rgb(var(--accent))}
+/* tab-knop zweeft bovenin elke helft — geen balk, files benutten alle ruimte */
+.pane-head{display:none}
+.main.split .pane-head{display:flex;align-items:center;gap:6px;flex:none;position:sticky;top:0;z-index:6;padding:7px 10px 3px;background:none;pointer-events:none}
+.main.split .pane-head>*{pointer-events:auto}
+.pane-head .ph-tab{display:inline-flex;align-items:center;gap:8px;min-width:0;max-width:60%;padding:6px 11px;border-radius:10px;font-size:13px;cursor:pointer;
+  background:rgba(var(--panel),.78);border:1px solid rgba(var(--stroke),.45);color:var(--text-soft);
+  backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);box-shadow:0 4px 12px -6px rgba(20,30,60,.4);transition:all .15s}
+.pane-head .ph-tab:hover{background:rgba(var(--panel),.92)}
+.pane-head .ph-tab.active{background:rgba(var(--accent),.95);border-color:transparent;color:#fff;font-weight:600;box-shadow:0 5px 14px -5px rgba(var(--accent),.85)}
+.pane-head .ph-ic{flex-shrink:0}
+.pane-head .ph-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pane-head .ph-orient{margin-left:auto}
+.pane-head .ph-btn,.pane-head .ph-close{flex-shrink:0;width:28px;height:28px;border:1px solid rgba(var(--stroke),.45);background:rgba(var(--panel),.78);color:var(--text);cursor:pointer;border-radius:8px;line-height:1;display:grid;place-items:center;font-size:13px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.pane-head .ph-btn:hover{background:rgba(var(--accent),.9);color:#fff;border-color:transparent}
+.pane-head .ph-close:hover{background:#ff453a;color:#fff;border-color:transparent}
+/* In split verdwijnt de gedeelde tabbalk; elke helft heeft zijn eigen tab. */
+.main.split .tabbar{display:none}
 .main.split-hint::after{content:'';position:absolute;right:0;top:46px;bottom:0;width:42%;background:rgba(var(--accent),.14);border-left:2px dashed rgb(var(--accent));pointer-events:none;z-index:6;border-radius:0 0 var(--radius) 0}
 .main.split-hint-h::after{content:'';position:absolute;left:0;right:0;bottom:0;height:42%;background:rgba(var(--accent),.14);border-top:2px dashed rgb(var(--accent));pointer-events:none;z-index:6;border-radius:0 0 var(--radius) var(--radius)}
 .main.split.split-h .filesrow{flex-direction:column}
-.main.split.split-h .pane2{border-left-width:0;border-top:3px solid transparent;border-image:linear-gradient(90deg,rgba(var(--accent),.25),rgba(var(--accent),.8) 50%,rgba(var(--accent),.25)) 1}
-body.dark .main.split.split-h .pane2{border-image:linear-gradient(90deg,rgba(var(--accent),.35),rgba(var(--accent),.9) 50%,rgba(var(--accent),.35)) 1}
-.main.split.split-h .files.pane-active{box-shadow:inset 2.5px 0 0 rgb(var(--accent))}
 .cmdbar{display:flex;align-items:center;gap:5px;padding:8px 14px 0;flex-wrap:wrap}
 .cbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(var(--stroke),.4);background:rgba(var(--panel),.45);color:var(--text);font-size:13px;padding:6px 11px;border-radius:10px;cursor:pointer;transition:all .15s;white-space:nowrap}
 .cbtn:hover{background:rgba(var(--accent),.9);color:#fff;border-color:transparent;transform:translateY(-1px)}
 .cbtn.ic{padding:6px 9px;font-size:15px;line-height:1}
+.cbtn svg{width:18px;height:18px;display:block}
+.cbtn-caret{font-size:10px;opacity:.55}
 .cbtn.danger:hover{background:#ff453a}
 .cmd-sep{width:1px;align-self:stretch;margin:2px 4px;background:rgba(var(--stroke),.4)}
 .tabbar{display:flex;align-items:center;gap:6px;padding:9px 12px 0;overflow-x:auto}
@@ -144,6 +173,12 @@ body.dark .main.split.split-h .pane2{border-image:linear-gradient(90deg,rgba(var
 .toolbar h2{font-size:18px;font-weight:650;letter-spacing:-.3px;margin-right:4px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
 .count{font-size:12px;color:var(--text-soft);background:rgba(var(--panel),.5);padding:3px 9px;border-radius:20px;flex-shrink:0}
 .filters-wrap{display:flex;align-items:center;gap:5px;flex:1 1 auto;min-width:0}
+.filters-wrap.collapsed{flex:0 0 auto}
+.filt-toggle{flex:none;width:30px;height:30px;border:1px solid rgba(var(--stroke),.4);background:rgba(var(--panel),.4);color:var(--text);border-radius:9px;cursor:pointer;display:grid;place-items:center;transition:background .2s}
+.filt-toggle:hover{background:rgba(var(--accent),.22)}
+.filt-toggle svg{width:16px;height:16px;transition:transform .4s cubic-bezier(.3,.9,.3,1.4)}
+.filters-wrap:not(.collapsed) .filt-toggle svg{transform:rotate(90deg)}
+.filters-wrap.collapsed .filters,.filters-wrap.collapsed .fscroll{display:none}
 .filters{display:flex;gap:7px;align-items:center;flex:1 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden;scroll-behavior:smooth;scrollbar-width:none}
 .filters::-webkit-scrollbar{display:none}
 .fscroll{flex:none;width:24px;height:30px;border:none;border-radius:9px;cursor:pointer;background:rgba(var(--panel),.5);color:var(--text);font-size:17px;line-height:1;display:grid;place-items:center;transition:background .15s}
@@ -172,9 +207,13 @@ body.dark .main.split.split-h .pane2{border-image:linear-gradient(90deg,rgba(var
 .adv select{background:rgba(var(--panel),.55);border:1px solid rgba(var(--stroke),.4);border-radius:10px;padding:6px 10px;color:var(--text);font-size:13px;outline:none}
 .adv .sort{margin-left:auto}
 
-.files{flex:1;overflow-y:auto;padding:16px;min-width:0}
+.files{flex:1;overflow-y:auto;overflow-x:hidden;padding:16px;min-width:0;min-height:0;border-radius:var(--radius);
+  background:linear-gradient(180deg,rgba(var(--panel),calc(var(--glass-alpha) + .12)),rgba(var(--panel),calc(var(--glass-alpha) - .05)));
+  backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border:1px solid rgba(var(--stroke),.55);box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.55)}
+body.dark .files{border-color:rgba(255,255,255,.12);box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.1)}
 .gridwrap{display:block}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--card),1fr));gap:14px;align-items:start}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--card),1fr));gap:6px 4px;align-items:start}
 .group-h{font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.6px;margin:16px 4px 9px;display:flex;align-items:center;gap:8px}
 .group-h:first-child{margin-top:2px}
 .group-h span{font-weight:600;background:rgba(var(--panel),.5);padding:1px 8px;border-radius:20px;font-size:11px}
@@ -191,8 +230,8 @@ body.dark .tagdot{box-shadow:0 0 0 1.5px rgba(0,0,0,.4)}
 .tagrow input[type=color]{width:32px;height:32px;border:none;border-radius:8px;background:none;cursor:pointer;padding:0}
 .tagrow .tagname{flex:1;background:rgba(var(--panel),.5);border:1px solid rgba(var(--stroke),.4);border-radius:9px;padding:7px 10px;color:var(--text);font-size:13px;outline:none}
 .tagrow .del{background:none;border:none;color:#ff5f57;cursor:pointer;font-size:14px;font-weight:700}
-.card{position:relative;border-radius:var(--radius-sm);padding:12px 11px;cursor:default;background:transparent;
-  border:1px solid transparent;transition:transform .16s,box-shadow .2s,background .2s;display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center}
+.card{position:relative;border-radius:var(--radius-sm);padding:8px 6px;cursor:default;background:transparent;
+  border:1px solid transparent;transition:transform .16s,box-shadow .2s,background .2s;display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center}
 .card:hover{background:rgba(var(--panel),.4)}
 .card.sel{background:linear-gradient(180deg,rgba(var(--accent),.26),rgba(var(--accent),.13))}
 .drop-hi{outline:2.5px solid rgb(var(--accent))!important;outline-offset:1px;background:rgba(var(--accent),.2)!important;border-radius:10px}
@@ -389,26 +428,28 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
   </aside>
   <div class="resizer side-rsz" id="sideRsz"></div>
 
-  <section class="main glass">
+  <section class="main">
+    <div class="main-head glass">
     <div class="tabbar" id="tabbar"></div>
     <div class="cmdbar" id="cmdbar">
-      <button class="cbtn" id="cmdNew">＋ Nieuw ▾</button>
+      <button class="cbtn" id="cmdNew" title="Nieuw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12H12M12 12H18M12 12V18M12 12V6"/></svg><span class="cbtn-caret">▾</span></button>
       <span class="cmd-sep"></span>
-      <button class="cbtn ic" id="cmdCut" title="Knippen">✂️</button>
-      <button class="cbtn ic" id="cmdCopy" title="Kopiëren">⧉</button>
-      <button class="cbtn ic" id="cmdPaste" title="Plakken">📋</button>
-      <button class="cbtn ic" id="cmdRename" title="Hernoemen">✏️</button>
-      <button class="cbtn ic" id="cmdPasteRename" title="Plak-hernoemen uit klembord">🔤</button>
-      <button class="cbtn ic" id="cmdMirror" title="Afbeelding spiegelen">🪞</button>
-      <button class="cbtn ic" id="cmdShare" title="Delen (mail / LocalSend)">📤</button>
+      <button class="cbtn ic" id="cmdCut" title="Knippen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></svg></button>
+      <button class="cbtn ic" id="cmdCopy" title="Kopiëren"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9V6.2002C9 5.08009 9 4.51962 9.21799 4.0918C9.40973 3.71547 9.71547 3.40973 10.0918 3.21799C10.5196 3 11.0801 3 12.2002 3H17.8002C18.9203 3 19.4801 3 19.9079 3.21799C20.2842 3.40973 20.5905 3.71547 20.7822 4.0918C21.0002 4.51962 21.0002 5.07967 21.0002 6.19978V11.7998C21.0002 12.9199 21.0002 13.48 20.7822 13.9078C20.5905 14.2841 20.2839 14.5905 19.9076 14.7822C19.4802 15 18.921 15 17.8031 15H15M15 15L15 12.1969C15 11.079 15 10.5192 14.7822 10.0918C14.5905 9.71547 14.2842 9.40973 13.9079 9.21799C13.4801 9 12.9203 9 11.8002 9H9H6.2002C5.08009 9 4.51962 9 4.0918 9.21799C3.71547 9.40973 3.40973 9.71547 3.21799 10.0918C3 10.5196 3 11.0801 3 12.2002V17.8002C3 18.9203 3 19.4801 3.21799 19.9079C3.40973 20.2842 3.71547 20.5905 4.0918 20.7822C4.5192 21 5.07899 21 6.19691 21H11.8036C12.9215 21 13.4805 21 13.9079 20.7822C14.2842 20.5905 14.5905 20.2839 14.7822 19.9076C15 19.4802 15 18.921 15 17.8031V15Z"/></svg></button>
+      <button class="cbtn ic" id="cmdPaste" title="Plakken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg></button>
+      <button class="cbtn ic" id="cmdRename" title="Hernoemen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8.00012L4 16.0001V20.0001H20M4 20.0001L8 20.0001L16 12.0001M12 8.00012L14.8686 5.13146L14.8704 5.12976C15.2652 4.73488 15.463 4.53709 15.691 4.46301C15.8919 4.39775 16.1082 4.39775 16.3091 4.46301C16.5369 4.53704 16.7345 4.7346 17.1288 5.12892L18.8686 6.86872C19.2646 7.26474 19.4627 7.46284 19.5369 7.69117C19.6022 7.89201 19.6021 8.10835 19.5369 8.3092C19.4628 8.53736 19.265 8.73516 18.8695 9.13061L18.8686 9.13146L16 12.0001M12 8.00012L16 12.0001"/></svg></button>
+      <button class="cbtn ic" id="cmdPasteRename" title="Plak-hernoemen uit klembord"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.0002 4H7.2002C6.08009 4 5.51962 4 5.0918 4.21799C4.71547 4.40973 4.40973 4.71547 4.21799 5.0918C4 5.51962 4 6.08009 4 7.2002V16.8002C4 17.9203 4 18.4801 4.21799 18.9079C4.40973 19.2842 4.71547 19.5905 5.0918 19.7822C5.5192 20 6.07899 20 7.19691 20H16.8031C17.921 20 18.48 20 18.9074 19.7822C19.2837 19.5905 19.5905 19.2839 19.7822 18.9076C20 18.4802 20 17.921 20 16.8031V14M16 5L10 11V14H13L19 8M16 5L19 2L22 5L19 8M16 5L19 8"/></svg></button>
+      <button class="cbtn ic" id="cmdMirror" title="Afbeelding spiegelen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12H21M6 9L3 12L6 15M18 15L21 12L18 9"/></svg></button>
+      <button class="cbtn ic" id="cmdShare" title="Delen (mail / LocalSend)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 3v13M8 7l4-4 4 4"/></svg></button>
       <span class="cmd-sep"></span>
-      <button class="cbtn ic danger" id="cmdDelete" title="Verwijderen">🗑️</button>
+      <button class="cbtn ic danger" id="cmdDelete" title="Verwijderen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 10V17M10 10V17M6 6V17.8C6 18.9201 6 19.4798 6.21799 19.9076C6.40973 20.2839 6.71547 20.5905 7.0918 20.7822C7.5192 21 8.07899 21 9.19691 21H14.8031C15.921 21 16.48 21 16.9074 20.7822C17.2837 20.5905 17.5905 20.2839 17.7822 19.9076C18 19.4802 18 18.921 18 17.8031V6M6 6H8M6 6H4M8 6H16M8 6C8 5.06812 8 4.60241 8.15224 4.23486C8.35523 3.74481 8.74432 3.35523 9.23438 3.15224C9.60192 3 10.0681 3 11 3H13C13.9319 3 14.3978 3 14.7654 3.15224C15.2554 3.35523 15.6447 3.74481 15.8477 4.23486C15.9999 4.6024 16 5.06812 16 6M16 6H18M18 6H20"/></svg></button>
     </div>
     <div class="toolbar">
       <h2 id="locTitle">Macsplorer</h2>
       <span class="count" id="count">0 items</span>
       <button class="chip" id="appsHidden" style="display:none">👁 Verborgen tonen</button>
-      <div class="filters-wrap">
+      <div class="filters-wrap" id="filtersWrap">
+        <button class="filt-toggle" id="filtToggle" title="Filters tonen/verbergen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
         <button class="fscroll" id="filtL" title="Vorige">‹</button>
         <div class="filters" id="typeFilters">
           <div class="chip" data-type="folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> Mappen</div>
@@ -429,9 +470,11 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
       <button class="advbtn" id="bDim"></button>
       <button class="advbtn sortbtn" id="bSort"></button>
     </div>
+    </div>
     <div class="filesrow" id="filesrow">
-      <div class="files" data-pane="0"><div id="fileArea" class="gridwrap"></div></div>
-      <div class="files pane2" data-pane="1"><div id="fileArea1" class="gridwrap"></div></div>
+      <div class="files" data-pane="0"><div class="pane-head" id="paneHead0"></div><div id="fileArea" class="gridwrap"></div></div>
+      <div class="split-rsz" id="splitRsz" title="Sleep om de verdeling aan te passen"></div>
+      <div class="files pane2" data-pane="1"><div class="pane-head" id="paneHead1"></div><div id="fileArea1" class="gridwrap"></div></div>
     </div>
   </section>
   <aside class="preview glass" id="preview"><div class="resizer prev-rsz" id="prevRsz"></div><div id="previewBody"></div></aside>
@@ -456,6 +499,8 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
   <div class="field"><label>Voorbeeldpaneel (rechts)</label><div class="seg" id="previewSeg"><button data-pv="1" class="on">Aan</button><button data-pv="0">Uit</button></div></div>
   <div class="field"><label>Automatisch verversen</label><div class="seg" id="autoRefreshSeg"><button data-ar="1">Aan</button><button data-ar="0" class="on">Uit</button></div>
     <div class="hint">Aan = nieuwe of gewijzigde bestanden verschijnen vanzelf. Uit = ververs handmatig met de knop of F5.</div></div>
+  <div class="field"><label>Datumkoppen (Vandaag / Deze week / Eerder)</label><div class="seg" id="groupSeg"><button data-gh="1" class="on">Aan</button><button data-gh="0">Uit</button></div>
+    <div class="hint">Aan = bestanden gegroepeerd onder datumkoppen (bij sorteren op datum). Uit = één doorlopende lijst.</div></div>
   <div class="field"><label>Accentkleur</label><div class="swatches" id="swatches"></div></div>
   <div class="field"><label>Thema</label><div class="seg" id="themeSeg"><button data-theme="light" class="on">☀️ Licht</button><button data-theme="dark">🌙 Donker</button></div></div>
   <div class="field"><label>Glass-intensiteit</label><input type="range" min="0" max="100" value="55" class="slider" id="glassSlider"></div>
@@ -578,7 +623,44 @@ let panes=[0],activePane=0;                 // panes = getoonde tab-indexen (1 o
 function aIdx(){return panes[activePane];}
 function tab(){return tabs[aIdx()];}
 function paneArea(pi){return document.getElementById(pi===0?'fileArea':'fileArea1');}
-function syncPaneActiveClass(){const fl=document.querySelectorAll('.filesrow .files');fl.forEach((f,i)=>f.classList.toggle('pane-active',panes.length>1&&i===activePane));}
+function syncPaneActiveClass(){const fl=document.querySelectorAll('.filesrow .files');fl.forEach((f,i)=>f.classList.toggle('pane-active',panes.length>1&&i===activePane));updatePaneHeads();}
+function updatePaneHeads(){
+  const split=panes.length>1;
+  [0,1].forEach(pi=>{
+    const head=document.getElementById('paneHead'+pi);if(!head)return;
+    if(!split||pi>=panes.length){head.innerHTML='';return;}
+    const t=tabs[panes[pi]];if(!t){head.innerHTML='';return;}
+    head.innerHTML=`<div class="ph-tab${pi===activePane?' active':''}"><span class="ph-ic">${pi===activePane?'📂':'📁'}</span><span class="ph-name">${esc(t.title||'Start')}</span><button class="ph-btn ph-orient" title="${splitDir==='h'?'Naast elkaar zetten':'Onder elkaar zetten'}">${splitDir==='h'?'⬌':'⬍'}</button><button class="ph-close" title="Deze helft sluiten">✕</button></div>`;
+    head.querySelector('.ph-tab').onclick=()=>{focusPane(tabs[panes[pi]]);};
+    head.querySelector('.ph-orient').onclick=e=>{e.stopPropagation();toggleSplitDir();};
+    head.querySelector('.ph-close').onclick=e=>{e.stopPropagation();closePane(pi);};
+  });
+}
+function closePane(pi){
+  if(panes.length<2)return;
+  const keep=panes[1-pi];
+  panes=[keep];activePane=0;
+  document.querySelector('.main').classList.remove('split','split-h');
+  syncFromTab();
+}
+(function(){
+  const rsz=document.getElementById('splitRsz');if(!rsz)return;
+  rsz.addEventListener('mousedown',e=>{
+    e.preventDefault();
+    const row=document.getElementById('filesrow');
+    const horiz=document.querySelector('.main').classList.contains('split-h');
+    document.body.classList.add('resizing');
+    const move=ev=>{const r=row.getBoundingClientRect();
+      let ratio=horiz?(ev.clientY-r.top)/r.height:(ev.clientX-r.left)/r.width;
+      ratio=Math.max(0.12,Math.min(0.88,ratio));
+      document.documentElement.style.setProperty('--split-pos',(ratio*100).toFixed(2)+'%');};
+    const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);document.body.classList.remove('resizing');
+      SS('splitPos',getComputedStyle(document.documentElement).getPropertyValue('--split-pos').trim());};
+    document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+  });
+  rsz.addEventListener('dblclick',()=>{document.documentElement.style.setProperty('--split-pos','50%');SS('splitPos','50%');});
+  const saved=LS('splitPos');if(saved)document.documentElement.style.setProperty('--split-pos',saved);
+})();
 function focusPane(t){const pi=panes.findIndex(ix=>tabs[ix]===t);if(pi<0||pi===activePane)return;activePane=pi;displayed=t.displayed||[];document.getElementById('searchInput').value=t.search||'';document.getElementById('locTitle').textContent=t.title||'Start';setBreadcrumb(t.path);updateNav();renderTabs();syncPaneActiveClass();}
 
 function renderTabs(){
@@ -595,10 +677,8 @@ function renderTabs(){
   });
   const add=document.createElement('button');add.className='tab-add';add.textContent='+';add.onclick=newTab;
   tb.appendChild(add);
-  if(panes.length>1){
-    const od=document.createElement('button');od.className='tab-add';od.title=splitDir==='h'?'Naast elkaar zetten':'Onder elkaar zetten';od.textContent=splitDir==='h'?'⬌':'⬍';od.onclick=toggleSplitDir;tb.appendChild(od);
-    const xs=document.createElement('button');xs.className='tab-add';xs.title='Split sluiten';xs.textContent='⊟';xs.onclick=exitSplit;tb.appendChild(xs);
-  }
+  // In split-modus is de tabbalk verborgen; de bediening (richting wisselen,
+  // helft sluiten) zit in de mapkoppen van elke helft.
 }
 let splitDir=LS('splitDir')||'v';   // 'v' = naast elkaar, 'h' = onder elkaar
 function applySplitClasses(){const m=document.querySelector('.main');const on=panes.length>1;m.classList.toggle('split',on);m.classList.toggle('split-h',on&&splitDir==='h');}
@@ -608,10 +688,12 @@ function enableTabDrag(el,i){
     e.preventDefault();
     const sx=e.clientX,sy=e.clientY,main=document.querySelector('.main');let dragging=false;
     // Sleep naar de rechterhelft = naast elkaar ('v'); naar de onderkant = onder elkaar ('h').
-    const zone=ev=>{const r=main.getBoundingClientRect();if(tabs.length<2)return null;
-      if(ev.clientY>r.top+r.height*0.6)return 'h';
-      if(ev.clientX>r.left+r.width*0.5&&ev.clientY>r.top+44)return 'v';
-      return null;};
+    const zone=ev=>{if(tabs.length<2)return null;
+      const fr=document.getElementById('filesrow').getBoundingClientRect();
+      const fx=(ev.clientX-fr.left)/fr.width, fy=(ev.clientY-fr.top)/fr.height;
+      if(fy<0.04||fx<0||fx>1)return null;   // boven of naast de bestandszone: geen split
+      // Meer naar beneden = onder elkaar ('h'); meer naar rechts = naast elkaar ('v').
+      return fy>fx ? 'h' : 'v';};
     const move=ev=>{if(!dragging){if(Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)<6)return;dragging=true;el.classList.add('tabdrag');}const z=zone(ev);main.classList.toggle('split-hint',z==='v');main.classList.toggle('split-hint-h',z==='h');};
     const up=ev=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);el.classList.remove('tabdrag');main.classList.remove('split-hint','split-hint-h');const z=dragging?zone(ev):null;if(z){splitDir=z;SS('splitDir',splitDir);suppressClick=true;enterSplit(i);}};
     document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
@@ -626,7 +708,7 @@ function enterSplit(rightIdx){
   syncFromTab();
 }
 function exitSplit(){panes=[aIdx()];activePane=0;document.querySelector('.main').classList.remove('split','split-h');syncFromTab();}
-function toggleSplitDir(){splitDir=splitDir==='h'?'v':'h';SS('splitDir',splitDir);applySplitClasses();renderTabs();}
+function toggleSplitDir(){splitDir=splitDir==='h'?'v':'h';SS('splitDir',splitDir);applySplitClasses();updatePaneHeads();}
 function newTab(){const cur=tab().path||(baseLocs[0]&&baseLocs[0].path)||'';tabs.push(mkTab(cur));panes[activePane]=tabs.length-1;renderTabs();navigate(cur);}
 function closeTab(i){
   if(tabs.length<=1)return;
@@ -763,7 +845,7 @@ function cardHTML(T,f,i){
 }
 function renderGrid(T,area,list){
   T.displayed=list;
-  const grouping=(ui.sort==='date'||ui.sort==='created')&&!tagView;const counts={};
+  const grouping=(ui.sort==='date'||ui.sort==='created')&&!tagView&&groupHeaders;const counts={};
   if(grouping)list.forEach(f=>{const b=bucketOf(f);counts[b]=(counts[b]||0)+1;});
   let html='',curB=null,open=false;
   list.forEach((f,i)=>{
@@ -803,7 +885,7 @@ function rowHTML(T,f,depth,i){
 }
 async function renderList(T,area,topList){
   const parts=[];T.displayed=[];
-  const grouping=(ui.sort==='date'||ui.sort==='created')&&!tagView;const counts={};let curB=null;
+  const grouping=(ui.sort==='date'||ui.sort==='created')&&!tagView&&groupHeaders;const counts={};let curB=null;
   if(grouping)topList.forEach(f=>{const b=bucketOf(f);counts[b]=(counts[b]||0)+1;});
   const walk=async(entries,depth,top)=>{
     for(const f of entries){
@@ -1003,14 +1085,14 @@ function showShareMenu(x,y){
 }
 {
   const on=(id,fn)=>{const b=document.getElementById(id);if(b)b.onclick=fn;};
-  on('cmdNew',()=>{const r=document.getElementById('cmdNew').getBoundingClientRect();showNewMenu(r.left,r.bottom+4);});
+  on('cmdNew',e=>{e.stopPropagation();const r=document.getElementById('cmdNew').getBoundingClientRect();showNewMenu(r.left,r.bottom+4);});
   on('cmdCut',()=>{if(tab().selSet.size)runCtx('cut');else flash('Selecteer eerst iets');});
   on('cmdCopy',()=>{if(tab().selSet.size)runCtx('copy');else flash('Selecteer eerst iets');});
   on('cmdPaste',()=>runEmpty('paste'));
   on('cmdRename',()=>{const p=selPaths();if(p.length===1)renameByPath(p[0]);else flash('Selecteer één bestand');});
   on('cmdPasteRename',()=>specialPasteRename());
   on('cmdMirror',()=>{if(tab().selSet.size)runCtx('mirror');else flash('Selecteer een afbeelding');});
-  on('cmdShare',()=>{const r=document.getElementById('cmdShare').getBoundingClientRect();showShareMenu(r.left,r.bottom+4);});
+  on('cmdShare',e=>{e.stopPropagation();const r=document.getElementById('cmdShare').getBoundingClientRect();showShareMenu(r.left,r.bottom+4);});
   on('cmdDelete',()=>{if(tab().selSet.size)runCtx('delete');else flash('Selecteer eerst iets');});
 }
 document.addEventListener('contextmenu',e=>{if(['INPUT','TEXTAREA'].includes(e.target.tagName))return;if(e.target.closest('.card,.row,.ctxmenu'))return;if(e.target.closest('.files')){e.preventDefault();showEmptyMenu(e.clientX,e.clientY);}else if(!e.target.closest('.panel,.preview')){e.preventDefault();}});
@@ -1020,6 +1102,7 @@ function renameByPath(p){const el=[...document.querySelectorAll('.card,.row')].f
 async function reloadFolder(){const t=tab();if(searchMode&&t.search){return doSearch(t.search);}if(LIVE){try{t.list=await invoke('read_dir',{path:t.path});}catch(e){}}t.selSet=new Set();await render();}
 
 /* ===== Automatisch verversen (optioneel; standaard uit) ===== */
+let groupHeaders=LS('groupHeaders')!==false;   // Vandaag/Deze week/Eerder koppen (standaard aan)
 let autoRefresh=LS('autoRefresh')===true;
 let arTimer=null;const arSig={};
 function arSignature(list){return (list||[]).map(f=>f.name+'|'+f.size+'|'+f.modified).sort().join('\n');}
@@ -1045,6 +1128,11 @@ function setAutoRefresh(on){autoRefresh=on;SS('autoRefresh',on);
   startAutoRefresh();}
 {const seg=document.getElementById('autoRefreshSeg');if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>setAutoRefresh(b.dataset.ar==='1'));}
 setAutoRefresh(autoRefresh);
+function setGroupHeaders(on,doRender){groupHeaders=on;SS('groupHeaders',on);
+  document.querySelectorAll('#groupSeg button').forEach(b=>b.classList.toggle('on',(b.dataset.gh==='1')===on));
+  if(doRender)render();}
+{const seg=document.getElementById('groupSeg');if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>setGroupHeaders(b.dataset.gh==='1',true));}
+setGroupHeaders(groupHeaders,false);
 
 async function runCtx(a){
   const paths=selPaths(),ents=selEntries(),dir=tab().path;
@@ -1692,6 +1780,14 @@ updateAdvBtns();
 const fStrip=document.getElementById('typeFilters');
 function updateFiltArrows(){const l=document.getElementById('filtL'),r=document.getElementById('filtR');if(!l||!r||!fStrip)return;const max=fStrip.scrollWidth-fStrip.clientWidth-1;const hide=max<=0;l.style.display=hide?'none':'';r.style.display=hide?'none':'';l.disabled=fStrip.scrollLeft<=0;r.disabled=fStrip.scrollLeft>=max;}
 {const l=document.getElementById('filtL'),r=document.getElementById('filtR');if(l)l.onclick=()=>{fStrip.scrollBy({left:-170,behavior:'smooth'});setTimeout(updateFiltArrows,260);};if(r)r.onclick=()=>{fStrip.scrollBy({left:170,behavior:'smooth'});setTimeout(updateFiltArrows,260);};}
+/* Filters in-/uitklappen (onthouden) */
+{
+  const fw=document.getElementById('filtersWrap'),ft=document.getElementById('filtToggle');
+  let filtersCollapsed=LS('filtersCollapsed')===true;
+  const applyFilt=()=>{if(fw)fw.classList.toggle('collapsed',filtersCollapsed);try{updateFiltArrows();}catch(e){}};
+  if(ft)ft.onclick=()=>{filtersCollapsed=!filtersCollapsed;SS('filtersCollapsed',filtersCollapsed);applyFilt();};
+  applyFilt();
+}
 if(fStrip)fStrip.addEventListener('scroll',updateFiltArrows);
 window.addEventListener('resize',updateFiltArrows);
 updateFiltArrows();
@@ -1729,7 +1825,24 @@ document.getElementById('clearExcel').onclick=()=>{aliasGroups=[];aliasPath='';S
 async function reloadAliases(){if(LIVE&&aliasPath){try{aliasGroups=await invoke('parse_aliases',{path:aliasPath});SS('aliases',aliasGroups);}catch(e){}}setAlias();}
 
 /* ===== Customization ===== */
-const ACCENTS=[['64,156,255','191,90,242'],['255,69,58','255,159,10'],['48,209,88','50,215,180'],['255,159,10','255,214,10'],['191,90,242','94,92,230'],['255,55,95','255,159,10'],['50,215,235','10,132,255']];
+const ACCENTS=[
+  ['64,156,255','191,90,242'],   // blauw → paars (standaard)
+  ['10,132,255','50,215,235'],   // blauw → cyaan
+  ['48,209,88','50,215,180'],    // groen → teal
+  ['52,199,89','10,132,255'],    // groen → blauw
+  ['255,214,10','48,209,88'],    // geel → groen
+  ['255,159,10','255,214,10'],   // oranje → geel
+  ['255,69,58','255,159,10'],    // rood → oranje
+  ['255,55,95','255,159,10'],    // roze → oranje
+  ['255,45,85','175,82,222'],    // rose → paars
+  ['175,82,222','255,55,95'],    // paars → roze
+  ['191,90,242','94,92,230'],    // paars → indigo
+  ['94,92,230','64,156,255'],    // indigo → blauw
+  ['50,215,235','10,132,255'],   // cyaan → blauw
+  ['0,199,190','48,209,88'],     // turquoise → groen
+  ['255,105,180','255,159,10'],  // hotpink → oranje
+  ['142,142,147','99,99,102']    // grijs (neutraal)
+];
 const sw=document.getElementById('swatches'),savedA=LS('accent');
 ACCENTS.forEach((a,i)=>{const d=document.createElement('div');d.className='sw';d.style.background=`linear-gradient(135deg,rgb(${a[0]}),rgb(${a[1]}))`;if(savedA?savedA[0]===a[0]:i===0)d.classList.add('on');d.onclick=()=>{document.documentElement.style.setProperty('--accent',a[0]);document.documentElement.style.setProperty('--accent-2',a[1]);sw.querySelectorAll('.sw').forEach(x=>x.classList.remove('on'));d.classList.add('on');SS('accent',a);};sw.appendChild(d);});
 if(savedA){document.documentElement.style.setProperty('--accent',savedA[0]);document.documentElement.style.setProperty('--accent-2',savedA[1]);}
