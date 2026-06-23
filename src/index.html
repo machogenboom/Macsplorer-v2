@@ -24,7 +24,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,san
 .orb{position:absolute;border-radius:50%;filter:blur(60px);opacity:.5;animation:float 22s ease-in-out infinite}
 .orb.a{width:420px;height:420px;background:rgba(var(--accent),.6);top:-80px;left:-60px}
 .orb.b{width:520px;height:520px;background:rgba(var(--accent-2),.55);bottom:-160px;right:-120px;animation-delay:-7s}
-.orb.c{width:300px;height:300px;background:rgba(80,220,180,.45);top:40%;left:55%;animation-delay:-13s}
+.orb.c{width:300px;height:300px;background:rgba(var(--accent),.45);background:color-mix(in srgb, rgba(var(--accent),.5) 50%, rgba(var(--accent-2),.5) 50%);top:40%;left:55%;animation-delay:-13s}
 @keyframes float{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(40px,-30px) scale(1.08)}66%{transform:translate(-30px,25px) scale(.95)}}
 .glass{background:linear-gradient(180deg,rgba(var(--panel),calc(var(--glass-alpha) + .12)),rgba(var(--panel),calc(var(--glass-alpha) - .05)));
   backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
@@ -315,9 +315,20 @@ body.dark .tagdot{box-shadow:0 0 0 1.5px rgba(0,0,0,.4)}
 .panel h3{font-size:18px;font-weight:650;display:flex;align-items:center;gap:9px;margin-bottom:4px}
 .panel .sub{font-size:12px;color:var(--text-soft);margin-bottom:18px}
 .sec{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--text-soft);font-weight:700;margin:22px 0 12px;padding-bottom:6px;border-bottom:1px solid rgba(var(--stroke),.3)}
+.sec-group{margin:0}
+.sec-group>summary.sec{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;margin:6px 0 0;user-select:none;transition:color .15s}
+.sec-group>summary.sec:hover{color:var(--text)}
+.sec-group>summary.sec::-webkit-details-marker{display:none}
+.sec-group>summary.sec::after{content:'';flex:none;width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);margin-left:auto;opacity:.6;transition:transform .25s}
+.sec-group[open]>summary.sec{margin-bottom:12px}
+.sec-group[open]>summary.sec::after{transform:rotate(45deg)}
 .field{margin-bottom:18px}
 .field>label{font-size:13px;font-weight:600;display:block;margin-bottom:9px}
 .swatches{display:flex;gap:10px;flex-wrap:wrap}
+.colorrow{display:flex;align-items:center;gap:10px}
+.colorpick{width:40px;height:34px;border:1px solid rgba(var(--stroke),.4);border-radius:10px;background:rgba(var(--panel),.4);cursor:pointer;padding:3px;flex:none}
+.colorpick::-webkit-color-swatch{border:none;border-radius:6px}
+.colorpick::-webkit-color-swatch-wrapper{padding:0}
 .sw{width:32px;height:32px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .15s}
 .sw:hover{transform:scale(1.12)}.sw.on{border-color:var(--text);box-shadow:0 0 0 3px rgba(var(--panel),.6)}
 .seg{display:flex;background:rgba(var(--panel),.45);border-radius:12px;padding:4px;border:1px solid rgba(var(--stroke),.4)}
@@ -487,37 +498,48 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
 <aside class="panel glass" id="panel">
   <button class="close-x" id="closePanel">✕</button>
   <h3>⚙️ Instellingen</h3><p class="sub">Pas Macsplorer aan jouw werkwijze aan.</p>
-  <div class="sec">🔎 Zoeken — synoniemen (Excel)</div>
-  <div class="field"><button class="btn" id="pickExcel">📊 Excel kiezen</button> <button class="btn ghost" id="clearExcel">Wissen</button>
-    <div class="alias-status" id="aliasStatus">Nog geen synoniemen geladen.</div>
-    <div class="hint">Elke <b>rij</b> = termen die gelijk zijn. Zoek je één term, dan vindt Macsplorer alle termen uit die rij.</div></div>
-  <div class="sec">🏷️ Labels (kleuren)</div>
-  <div class="field"><div id="tagList"></div><button class="btn" id="addTag">+ Label toevoegen</button>
-    <div class="hint">Geef bestanden of mappen een kleur via rechtermuisklik → de bolletjes. Ze verschijnen onder "Labels" in de zijbalk zonder te verplaatsen.</div></div>
-  <div class="sec">📁 Zoekmappen</div>
-  <div class="field"><div class="pathlist" id="rootList"></div><button class="btn" id="addRoot">+ Map toevoegen</button><div class="hint">Gebruikt bij zoekbereik "Zoekmappen". Leeg = alle schijven.</div></div>
-  <div class="sec">🚫 Uitsluiten</div>
-  <div class="field"><div class="pathlist" id="exclList"></div><button class="btn" id="addExcl">+ Map uitsluiten</button><div class="hint">Deze mappen worden bij zoeken volledig overgeslagen.</div></div>
-  <div class="sec">🎨 Weergave</div>
-  <div class="field"><label>Voorbeeldpaneel (rechts)</label><div class="seg" id="previewSeg"><button data-pv="1" class="on">Aan</button><button data-pv="0">Uit</button></div></div>
-  <div class="field"><label>Automatisch verversen</label><div class="seg" id="autoRefreshSeg"><button data-ar="1">Aan</button><button data-ar="0" class="on">Uit</button></div>
-    <div class="hint">Aan = nieuwe of gewijzigde bestanden verschijnen vanzelf. Uit = ververs handmatig met de knop of F5.</div></div>
-  <div class="field"><label>Datumkoppen (Vandaag / Deze week / Eerder)</label><div class="seg" id="groupSeg"><button data-gh="1" class="on">Aan</button><button data-gh="0">Uit</button></div>
-    <div class="hint">Aan = bestanden gegroepeerd onder datumkoppen (bij sorteren op datum). Uit = één doorlopende lijst.</div></div>
-  <div class="field"><label>Accentkleur</label><div class="swatches" id="swatches"></div></div>
-  <div class="field"><label>Thema</label><div class="seg" id="themeSeg"><button data-theme="light" class="on">☀️ Licht</button><button data-theme="dark">🌙 Donker</button></div></div>
-  <div class="field"><label>Glass-intensiteit</label><input type="range" min="0" max="100" value="55" class="slider" id="glassSlider"></div>
-  <div class="field"><label>Wazigheid (blur)</label><input type="range" min="0" max="60" value="30" class="slider" id="blurSlider"></div>
-  <div class="field"><label>Hoekafronding</label><input type="range" min="6" max="30" value="22" class="slider" id="radiusSlider"></div>
-  <div class="field"><label>Kaartgrootte (rasterweergave)</label><input type="range" min="60" max="300" value="150" class="slider" id="cardSize"></div>
-  <div class="field"><label>Slogans (wisselen elke 15 min)</label><button class="btn ghost" id="editSlogans">Slogans bewerken…</button></div>
-  <div class="sec">⌨️ Sneltoetsen</div>
-  <div class="field"><div id="shortcutList"></div><button class="btn ghost" id="resetShortcuts" style="margin-top:10px">Standaard herstellen</button>
-    <div class="hint">Klik op een combinatie en druk daarna de gewenste toetsen in. Esc annuleert. Werkt onafhankelijk van toetsenbordindeling.</div></div>
-  <div class="sec">⬇️ Updates (GitHub)</div>
-  <div class="field"><label>GitHub-repo (eigenaar/repo)</label><input class="repo-in" id="ghRepo" placeholder="bijv. machogenboom/macsplorer" spellcheck="false">
-    <button class="btn" id="checkUpd" style="margin-top:10px">Controleer op updates</button>
-    <div class="hint">Releases moeten het kale <code>Macsplorer.exe</code> bevatten (de GitHub-workflow uploadt dit automatisch) en een tag zoals <code>v0.2.0</code>. Bijwerken vervangt alleen het exe — installatie, snelkoppeling en taakbalk-pin blijven behouden.</div></div>
+  <details class="sec-group" data-k="weergave" open>
+    <summary class="sec">🎨 Weergave &amp; uiterlijk</summary>
+    <div class="field"><label>Thema</label><div class="seg" id="themeSeg"><button data-theme="light" class="on">☀️ Licht</button><button data-theme="dark">🌙 Donker</button></div></div>
+    <div class="field"><label>Accentkleur</label>
+      <div class="colorrow"><input type="color" class="colorpick" id="accent1" title="Hoofdkleur"><input type="color" class="colorpick" id="accent2" title="Tweede kleur (verloop)"><span class="hint" style="margin:0">Kies je eigen kleuren — twee kleuren = verloop, of beide gelijk voor één kleur.</span></div></div>
+    <div class="field"><label>Mappictogram</label><div><button class="btn ghost" id="pickFolderIcon">🖼️ Afbeelding kiezen…</button> <button class="btn ghost" id="resetFolderIcon">Standaard</button></div>
+      <div class="hint">Kies een eigen PNG/SVG voor álle mappen in de weergave. Standaard = het ingebouwde map-icoon.</div></div>
+    <div class="field"><label>Glass-intensiteit</label><input type="range" min="0" max="100" value="55" class="slider" id="glassSlider"></div>
+    <div class="field"><label>Wazigheid (blur)</label><input type="range" min="0" max="60" value="30" class="slider" id="blurSlider"></div>
+    <div class="field"><label>Hoekafronding</label><input type="range" min="6" max="30" value="22" class="slider" id="radiusSlider"></div>
+    <div class="field"><label>Kaartgrootte (rasterweergave)</label><input type="range" min="60" max="300" value="150" class="slider" id="cardSize"></div>
+    <div class="field"><label>Voorbeeldpaneel (rechts)</label><div class="seg" id="previewSeg"><button data-pv="1" class="on">Aan</button><button data-pv="0">Uit</button></div></div>
+    <div class="field"><label>Datumkoppen (Vandaag / Deze week / Eerder)</label><div class="seg" id="groupSeg"><button data-gh="1" class="on">Aan</button><button data-gh="0">Uit</button></div>
+      <div class="hint">Aan = bestanden gegroepeerd onder datumkoppen (bij sorteren op datum). Uit = één doorlopende lijst.</div></div>
+    <div class="field"><label>Automatisch verversen</label><div class="seg" id="autoRefreshSeg"><button data-ar="1">Aan</button><button data-ar="0" class="on">Uit</button></div>
+      <div class="hint">Aan = nieuwe of gewijzigde bestanden verschijnen vanzelf. Uit = ververs handmatig met de knop of F5.</div></div>
+    <div class="field"><label>Slogans (wisselen elke 15 min)</label><button class="btn ghost" id="editSlogans">Slogans bewerken…</button></div>
+  </details>
+  <details class="sec-group" data-k="labels">
+    <summary class="sec">🏷️ Labels (kleuren)</summary>
+    <div class="field"><div id="tagList"></div><button class="btn" id="addTag">+ Label toevoegen</button>
+      <div class="hint">Geef bestanden of mappen een kleur via rechtermuisklik → de bolletjes. Ze verschijnen onder "Labels" in de zijbalk zonder te verplaatsen.</div></div>
+  </details>
+  <details class="sec-group" data-k="zoeken">
+    <summary class="sec">🔎 Zoeken &amp; mappen</summary>
+    <div class="field"><label>Synoniemen (Excel)</label><div><button class="btn" id="pickExcel">📊 Excel kiezen</button> <button class="btn ghost" id="clearExcel">Wissen</button></div>
+      <div class="alias-status" id="aliasStatus">Nog geen synoniemen geladen.</div>
+      <div class="hint">Elke <b>rij</b> = termen die gelijk zijn. Zoek je één term, dan vindt Macsplorer alle termen uit die rij.</div></div>
+    <div class="field"><label>Zoekmappen</label><div class="pathlist" id="rootList"></div><button class="btn" id="addRoot">+ Map toevoegen</button><div class="hint">Gebruikt bij zoekbereik "Zoekmappen". Leeg = alle schijven.</div></div>
+    <div class="field"><label>Uitsluiten</label><div class="pathlist" id="exclList"></div><button class="btn" id="addExcl">+ Map uitsluiten</button><div class="hint">Deze mappen worden bij zoeken volledig overgeslagen.</div></div>
+  </details>
+  <details class="sec-group" data-k="sneltoetsen">
+    <summary class="sec">⌨️ Sneltoetsen</summary>
+    <div class="field"><div id="shortcutList"></div><button class="btn ghost" id="resetShortcuts" style="margin-top:10px">Standaard herstellen</button>
+      <div class="hint">Klik op een combinatie en druk daarna de gewenste toetsen in. Esc annuleert. Werkt onafhankelijk van toetsenbordindeling.</div></div>
+  </details>
+  <details class="sec-group" data-k="updates">
+    <summary class="sec">⬇️ Updates (GitHub)</summary>
+    <div class="field"><label>GitHub-repo (eigenaar/repo)</label><input class="repo-in" id="ghRepo" placeholder="bijv. machogenboom/macsplorer" spellcheck="false">
+      <button class="btn" id="checkUpd" style="margin-top:10px">Controleer op updates</button>
+      <div class="hint">Releases moeten het kale <code>Macsplorer.exe</code> bevatten (de GitHub-workflow uploadt dit automatisch) en een tag zoals <code>v0.2.0</code>. Bijwerken vervangt alleen het exe — installatie, snelkoppeling en taakbalk-pin blijven behouden.</div></div>
+  </details>
 </aside>
 
 <div class="modal-bg" id="propBg"><div class="modal glass" id="propModal"></div></div>
@@ -579,7 +601,12 @@ const TYPE_COLOR={folder:'#f3b13b',image:'#19c1e0',doc:'#3aa0f5',video:'#ff5c7a'
 const SMALL_ICON=TYPE_COLOR;
 const ICON_PNG={folder:'folder.png',audio:'audio.png',archive:'zip.png',doc:'bestand.png',code:'bestand.png',image:'bestand.png',video:'bestand.png',exe:'exe.png'};
 function glyphSVG(t){return GLYPH[t]||GLYPH.doc;}
-function iconHTML(t,ext){const png=ICON_PNG[t]||'bestand.png';
+function iconHTML(t,ext){
+  // Eigen mappictogram (uit instellingen) voor álle mappen.
+  if(t==='folder'&&folderIcon&&toAssetUrl){
+    return `<div class="glyphbg" style="color:${TYPE_COLOR.folder}">${glyphSVG('folder')}</div><img class="pngicon" src="${esc(toAssetUrl(folderIcon))}" alt="" data-fb="hide">`;
+  }
+  const png=ICON_PNG[t]||'bestand.png';
   const label=(png==='bestand.png'&&ext)?`<span class="extlbl">${esc(String(ext).toUpperCase().slice(0,4))}</span>`:'';
   return `<div class="glyphbg" style="color:${TYPE_COLOR[t]||'#90a0b8'}">${glyphSVG(t)}</div><img class="pngicon" src="assets/icons/${png}" alt="" data-fb="hide">${label}`;}
 function cardIcon(t,ext){return `<div class="thumb iconwrap">${iconHTML(t,ext)}</div>`;}
@@ -611,6 +638,7 @@ let tags=LS('tags')||[{id:'t1',name:'Belangrijk',color:'#ff453a'},{id:'t2',name:
 let fileTags=LS('fileTags')||{};       // pad -> [tagId]
 let favIcons=LS('favIcons')||{};       // pad -> eigen icoon-pad
 let driveOpen=LS('driveOpen')||{};     // schijf/cloud-pad -> map die geopend wordt bij klik
+let folderIcon=LS('folderIcon')||'';   // eigen pictogram voor álle mappen (leeg = standaard)
 let sortByPath=LS('sortByPath')||{};   // pad -> onthouden sortering
 const dirSizeCache=new Map();
 function tagById(id){return tags.find(t=>t.id===id);}
@@ -1618,6 +1646,23 @@ async function pickFavIcon(path){
   if(!LIVE){const p=prompt('Pad naar PNG-icoon:');if(p){favIcons[path]=p;SS('favIcons',favIcons);renderNav();}return;}
   try{const p=await invoke('pick_image');if(p){favIcons[path]=p;SS('favIcons',favIcons);renderNav();}}catch(e){}
 }
+/* ===== Eigen mappictogram (instellingen) ===== */
+function setFolderIcon(p){folderIcon=p||'';SS('folderIcon',folderIcon);render();}
+{
+  const pb=document.getElementById('pickFolderIcon'),rb=document.getElementById('resetFolderIcon');
+  if(pb)pb.onclick=async()=>{
+    if(!LIVE){const p=prompt('Pad naar PNG/SVG-icoon:');if(p)setFolderIcon(p);return;}
+    try{const p=await invoke('pick_image');if(p)setFolderIcon(p);}catch(e){}
+  };
+  if(rb)rb.onclick=()=>setFolderIcon('');
+}
+/* ===== Instellingen-secties in-/uitklappen (onthouden) ===== */
+document.querySelectorAll('.sec-group').forEach(d=>{
+  const k=d.dataset.k;if(!k)return;
+  const saved=LS('sec_'+k);
+  if(saved===true||saved===false)d.open=saved;
+  d.addEventListener('toggle',()=>SS('sec_'+k,d.open));
+});
 function reorderNav(from,to){
   if(!from||from===to)return;
   let order=allNavItems().map(i=>i.path);
@@ -1782,13 +1827,13 @@ document.querySelectorAll('#typeFilters .chip').forEach(ch=>ch.onclick=e=>{
 });
 /* ===== Compacte filterknoppen (i.p.v. dropdowns) ===== */
 const ADV={
-  date:{el:'bDate',icon:'📅',opts:[['all','Altijd'],['today','Vandaag'],['week','Deze week'],['month','Deze maand'],['year','Dit jaar']],get:()=>ui.date,set:v=>{ui.date=v;render();}},
-  size:{el:'bSize',icon:'📦',opts:[['all','Alle groottes'],['s','Klein (<1 MB)'],['m','Middel (1–50 MB)'],['l','Groot (>50 MB)']],get:()=>ui.size,set:v=>{ui.size=v;render();}},
-  dim:{el:'bDim',icon:'🖼',opts:[['all','Elk formaat'],['800','800×800'],['1024','1024×1024'],['1200','1200×1200'],['2000','2000×2000'],['2048','2048×2048']],get:()=>ui.dim,set:v=>{ui.dim=v;render();}},
+  date:{el:'bDate',icon:'',opts:[['all','Altijd'],['today','Vandaag'],['week','Deze week'],['month','Deze maand'],['year','Dit jaar']],get:()=>ui.date,set:v=>{ui.date=v;render();}},
+  size:{el:'bSize',icon:'',opts:[['all','Alle groottes'],['s','Klein (<1 MB)'],['m','Middel (1–50 MB)'],['l','Groot (>50 MB)']],get:()=>ui.size,set:v=>{ui.size=v;render();}},
+  dim:{el:'bDim',icon:'',opts:[['all','Elk formaat'],['800','800×800'],['1024','1024×1024'],['1200','1200×1200'],['2000','2000×2000'],['2048','2048×2048']],get:()=>ui.dim,set:v=>{ui.dim=v;render();}},
   sort:{el:'bSort',icon:'↕',opts:[['name','Naam'],['date','Datum (gewijzigd)'],['created','Datum (gemaakt)'],['size','Grootte'],['type','Type']],get:()=>ui.sort,set:v=>{ui.sort=v;SS('sort',v);if(tab().path){sortByPath[tab().path]=v;SS('sortByPath',sortByPath);}render();}}
 };
 function advLabel(cfg){const o=cfg.opts.find(x=>x[0]===cfg.get());return o?o[1]:cfg.get();}
-function updateAdvBtns(){for(const k in ADV){const cfg=ADV[k],b=document.getElementById(cfg.el);if(!b)continue;b.classList.toggle('active',k!=='sort'&&cfg.get()!==cfg.opts[0][0]);b.innerHTML=`<span>${cfg.icon}</span> ${advLabel(cfg)} <span class="caret">▾</span>`;}}
+function updateAdvBtns(){for(const k in ADV){const cfg=ADV[k],b=document.getElementById(cfg.el);if(!b)continue;b.classList.toggle('active',k!=='sort'&&cfg.get()!==cfg.opts[0][0]);b.innerHTML=`${cfg.icon?`<span>${cfg.icon}</span> `:''}${advLabel(cfg)} <span class="caret">▾</span>`;}}
 function openAdvMenu(cfg,anchor){
   hideCtxMenu();
   const m=document.createElement('div');m.className='ctxmenu';m.id='ctxMenu';
@@ -1866,9 +1911,24 @@ const ACCENTS=[
   ['255,105,180','255,159,10'],  // hotpink → oranje
   ['142,142,147','99,99,102']    // grijs (neutraal)
 ];
-const sw=document.getElementById('swatches'),savedA=LS('accent');
-ACCENTS.forEach((a,i)=>{const d=document.createElement('div');d.className='sw';d.style.background=`linear-gradient(135deg,rgb(${a[0]}),rgb(${a[1]}))`;if(savedA?savedA[0]===a[0]:i===0)d.classList.add('on');d.onclick=()=>{document.documentElement.style.setProperty('--accent',a[0]);document.documentElement.style.setProperty('--accent-2',a[1]);sw.querySelectorAll('.sw').forEach(x=>x.classList.remove('on'));d.classList.add('on');SS('accent',a);};sw.appendChild(d);});
-if(savedA){document.documentElement.style.setProperty('--accent',savedA[0]);document.documentElement.style.setProperty('--accent-2',savedA[1]);}
+/* Zelf je accentkleuren kiezen via twee color-pickers (verloop). */
+function hexToRgbStr(h){h=String(h||'').replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16)||0;return `${(n>>16)&255},${(n>>8)&255},${n&255}`;}
+function rgbStrToHex(rgb){const p=String(rgb||'').split(',').map(x=>Math.max(0,Math.min(255,parseInt(x.trim())||0)));return '#'+[p[0]||0,p[1]||0,p[2]||0].map(x=>x.toString(16).padStart(2,'0')).join('');}
+{
+  const a1=document.getElementById('accent1'),a2=document.getElementById('accent2');
+  const savedA=LS('accent');
+  const cur1=(savedA&&savedA[0])||'64,156,255',cur2=(savedA&&savedA[1])||'191,90,242';
+  document.documentElement.style.setProperty('--accent',cur1);
+  document.documentElement.style.setProperty('--accent-2',cur2);
+  if(a1)a1.value=rgbStrToHex(cur1);
+  if(a2)a2.value=rgbStrToHex(cur2);
+  const apply=()=>{const c1=hexToRgbStr(a1.value),c2=hexToRgbStr(a2.value);
+    document.documentElement.style.setProperty('--accent',c1);
+    document.documentElement.style.setProperty('--accent-2',c2);
+    SS('accent',[c1,c2]);};
+  if(a1)a1.oninput=apply;
+  if(a2)a2.oninput=apply;
+}
 document.querySelectorAll('#themeSeg button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#themeSeg button').forEach(x=>x.classList.remove('on'));b.classList.add('on');document.body.classList.toggle('dark',b.dataset.theme==='dark');SS('theme',b.dataset.theme);});
 if(LS('theme')==='dark'){document.body.classList.add('dark');document.querySelectorAll('#themeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.theme==='dark'));}
 glassSlider.oninput=e=>{document.documentElement.style.setProperty('--glass-alpha',e.target.value/100);SS('glass',e.target.value);};
