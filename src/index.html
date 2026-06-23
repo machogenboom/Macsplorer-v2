@@ -31,7 +31,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,san
   border:1px solid rgba(var(--stroke),.55);box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.65),inset 0 -1px 1px rgba(255,255,255,.1)}
 body.dark .glass{border-color:rgba(255,255,255,.12);box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.12)}
 
-.app{position:relative;z-index:1;height:100vh;padding:14px;gap:14px;display:grid;
+.app{position:relative;z-index:1;height:100vh;padding:8px;gap:9px;display:grid;
   grid-template-columns:var(--side-w) 1fr;grid-template-rows:auto 1fr;grid-template-areas:"top top" "side main";
   transition:grid-template-columns .32s cubic-bezier(.3,.9,.3,1)}
 .app.preview-open{grid-template-columns:var(--side-w) 1fr var(--prev-w);grid-template-areas:"top top top" "side main preview"}
@@ -256,7 +256,9 @@ body.dark .tagdot{box-shadow:0 0 0 1.5px rgba(0,0,0,.4)}
 .thumb.img.vid::after{content:'▶';position:absolute;inset:0;display:grid;place-items:center;font-size:20px;color:rgba(255,255,255,.92);text-shadow:0 2px 8px rgba(0,0,0,.65);pointer-events:none}
 .thumb.img.pending{background-image:linear-gradient(110deg,rgba(var(--panel),.3) 30%,rgba(var(--panel),.55) 50%,rgba(var(--panel),.3) 70%);background-size:200% 100%;animation:shimmer 1.1s infinite}
 @keyframes shimmer{to{background-position:-200% 0}}
-.card .name{font-size:13px;font-weight:550;line-height:1.25;word-break:break-word;cursor:text;padding:1px 3px;border-radius:5px}
+.card .name{font-size:13px;font-weight:550;line-height:1.25;word-break:break-word;cursor:text;padding:1px 3px;border-radius:5px;
+  display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.card.sel .name{-webkit-line-clamp:unset;line-clamp:unset;overflow:visible}
 .card .name input{font:inherit;text-align:center;border:1px solid rgb(var(--accent));border-radius:5px;padding:1px 3px;width:100%;outline:none;background:rgba(var(--panel),.9);color:var(--text)}
 .card .meta{font-size:11px;color:var(--text-soft)}
 .tag{position:absolute;top:8px;right:8px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:3px 6px;border-radius:7px;color:#fff}
@@ -271,6 +273,7 @@ body.dark .tagdot{box-shadow:0 0 0 1.5px rgba(0,0,0,.4)}
 .row .disc{width:16px;text-align:center;cursor:pointer;color:var(--text-soft);transition:transform .15s;flex-shrink:0;font-size:11px}
 .row .disc.open{transform:rotate(90deg)}
 .row .nm{flex:1;font-size:13.5px;font-weight:500;cursor:text;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row.sel .nm{white-space:normal;overflow:visible;text-overflow:clip}
 .row .nm input{font:inherit;border:1px solid rgb(var(--accent));border-radius:5px;padding:1px 5px;width:100%;outline:none;background:rgba(var(--panel),.9);color:var(--text)}
 .row .mt{font-size:12px;color:var(--text-soft);min-width:120px;text-align:right;flex-shrink:0}
 .row .sz{font-size:12px;color:var(--text-soft);min-width:80px;text-align:right;flex-shrink:0}
@@ -506,7 +509,7 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
   <div class="field"><label>Glass-intensiteit</label><input type="range" min="0" max="100" value="55" class="slider" id="glassSlider"></div>
   <div class="field"><label>Wazigheid (blur)</label><input type="range" min="0" max="60" value="30" class="slider" id="blurSlider"></div>
   <div class="field"><label>Hoekafronding</label><input type="range" min="6" max="30" value="22" class="slider" id="radiusSlider"></div>
-  <div class="field"><label>Kaartgrootte (rasterweergave)</label><input type="range" min="96" max="300" value="150" class="slider" id="cardSize"></div>
+  <div class="field"><label>Kaartgrootte (rasterweergave)</label><input type="range" min="60" max="300" value="150" class="slider" id="cardSize"></div>
   <div class="field"><label>Slogans (wisselen elke 15 min)</label><button class="btn ghost" id="editSlogans">Slogans bewerken…</button></div>
   <div class="sec">⌨️ Sneltoetsen</div>
   <div class="field"><div id="shortcutList"></div><button class="btn ghost" id="resetShortcuts" style="margin-top:10px">Standaard herstellen</button>
@@ -560,7 +563,7 @@ const VID_EXT=new Set(['mp4','mov','mkv','avi','webm','m4v','wmv']);
 const APP_EXT=new Set(['exe','msi']);
 function isVid(f){return VID_EXT.has((f.ext||'').toLowerCase());}
 function isApp(f){return !f.isDir&&APP_EXT.has((f.ext||'').toLowerCase());}
-function canThumb(f){if(f.isDir||!toAssetUrl)return false;const e=(f.ext||'').toLowerCase();return IMG_EXT.has(e)||VID_EXT.has(e)||e==='pdf';}
+function canThumb(f){if(f.isDir||!toAssetUrl)return false;const e=(f.ext||'').toLowerCase();return IMG_EXT.has(e)||VID_EXT.has(e)||e==='pdf'||e==='svg';}
 function typeOf(e){return e.isDir?'folder':(EXT_TYPE[(e.ext||'').toLowerCase()]||'doc');}
 function sourceOf(p){const s=(p||'').toLowerCase();if(s.includes('onedrive'))return 'onedrive';if(s.includes('google drive')||s.includes(SEP+'my drive'))return 'gdrive';if(s.includes('icloud'))return 'icloud';return 'systeem';}
 const GLYPH={
@@ -742,6 +745,9 @@ async function loadThumb(el){
   const cover=el.dataset.cover==='1';
   const cached=thumbCache.get(path);
   if(cached){showThumb(el,cached,cover);return;}
+  // SVG (en andere vector-/tekstformaten) rendert de webview zelf: laad het
+  // bestand rechtstreeks als afbeelding, zonder backend-rasterisatie. Supersnel.
+  if(/\.svg$/i.test(path)){const url=toAssetUrl(path);thumbCache.set(path,url);showThumb(el,url,cover);return;}
   try{const tp=await invoke('thumbnail',{path,max:256});const url=toAssetUrl(tp);thumbCache.set(path,url);showThumb(el,url,cover);}
   catch(e){el.classList.remove('pending');el.outerHTML=cover?smallIcon('image'):cardIcon('image');}
 }
@@ -865,7 +871,7 @@ function renderGrid(T,area,list){
     const thumbEl=c.querySelector('.thumb');
     if(thumbEl)thumbEl.ondblclick=e=>{e.stopPropagation();focusPane(T);openEntry(f);};
     const nm=c.querySelector('.name');
-    nm.ondblclick=e=>{e.stopPropagation();focusPane(T);if(f.isDir)openEntry(f);else startRename(nm,f);};
+    attachSlowRename(nm,f);
   });
   if(toAssetUrl&&imgObserver)area.querySelectorAll('.thumb.img').forEach(el=>imgObserver.observe(el));
   loadDirSizes(list);
@@ -912,7 +918,7 @@ async function renderList(T,area,topList){
     if(d)d.onclick=async e=>{e.stopPropagation();focusPane(T);if(T.expanded.has(f.path))T.expanded.delete(f.path);else T.expanded.add(f.path);await render();};
     const tw=rowEl.querySelector('.tw');if(tw)tw.ondblclick=e=>{e.stopPropagation();focusPane(T);openEntry(f);};
     const nm=rowEl.querySelector('.nm');
-    nm.ondblclick=e=>{e.stopPropagation();focusPane(T);if(f.isDir)openEntry(f);else startRename(nm,f);};
+    attachSlowRename(nm,f);
   });
   if(toAssetUrl&&imgObserver)area.querySelectorAll('.tw.img').forEach(el=>imgObserver.observe(el));
   loadDirSizes(T.displayed);
@@ -1309,7 +1315,22 @@ renderShortcutSettings();
 function openEntry(f){if(f.isDir)navigate(f.path);else openPath(f.path);}
 async function openPath(p){if(LIVE){try{await invoke('open_path',{path:p});}catch(e){alert('Kan niet openen: '+e);}}}
 
+/* Traag-dubbelklikken (losse klik op een al-geselecteerd item) = hernoemen.
+   Snel dubbelklikken = openen (afgehandeld door de kaart/rij). */
+let renameTimer=null;
+function attachSlowRename(nm,f){
+  nm.onclick=e=>{
+    if(e.detail>1)return;                       // tweede klik van een dubbelklik: niet hernoemen
+    const ss=tab().selSet;
+    if(ss.has(f.path)&&ss.size===1){
+      clearTimeout(renameTimer);
+      renameTimer=setTimeout(()=>{const s=tab().selSet;if(s.has(f.path)&&s.size===1)startRename(nm,f);},480);
+    }
+  };
+  nm.ondblclick=()=>{clearTimeout(renameTimer);};   // dubbelklik opent (via kaart/rij), niet hernoemen
+}
 function startRename(el,f){
+  clearTimeout(renameTimer);
   const old=f.name;const inp=document.createElement('input');inp.value=old;
   el.textContent='';el.appendChild(inp);inp.focus();
   const dot=old.lastIndexOf('.');inp.setSelectionRange(0,dot>0&&!f.isDir?dot:old.length);
@@ -1799,7 +1820,7 @@ if(LS('scope'))ui.scope=LS('scope');updateScopeBtn();
 vGrid.onclick=()=>{ui.view='grid';vGrid.classList.add('on');vList.classList.remove('on');SS('view','grid');render();};
 vList.onclick=()=>{ui.view='list';vList.classList.add('on');vGrid.classList.remove('on');SS('view','list');render();};
 const cardSize=document.getElementById('cardSize');
-function setCardSize(px){px=Math.max(96,Math.min(300,Math.round(px)));document.documentElement.style.setProperty('--card',px+'px');SS('card',px);cardSize.value=px;}
+function setCardSize(px){px=Math.max(60,Math.min(300,Math.round(px)));document.documentElement.style.setProperty('--card',px+'px');SS('card',px);cardSize.value=px;}
 cardSize.oninput=e=>{document.documentElement.style.setProperty('--card',e.target.value+'px');SS('card',e.target.value);};
 if(LS('card')){cardSize.value=LS('card');document.documentElement.style.setProperty('--card',LS('card')+'px');}
 // Ctrl + scrollen = in-/uitzoomen op de icoontjes (rasterweergave).

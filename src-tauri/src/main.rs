@@ -947,6 +947,40 @@ fn find_localsend_exe() -> Option<std::path::PathBuf> {
     None
 }
 
+/// Zoekt het LocalSend-venster en haalt het naar de voorgrond.
+#[cfg(windows)]
+fn focus_localsend_window() {
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM, TRUE};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowTextW, IsWindowVisible, SetForegroundWindow, ShowWindow, SW_RESTORE,
+    };
+    unsafe extern "system" fn enum_cb(hwnd: HWND, _l: LPARAM) -> BOOL {
+        if !IsWindowVisible(hwnd).as_bool() {
+            return TRUE;
+        }
+        let mut buf = [0u16; 256];
+        let n = GetWindowTextW(hwnd, &mut buf);
+        if n > 0 {
+            let title = String::from_utf16_lossy(&buf[..n as usize]).to_lowercase();
+            if title.contains("localsend") {
+                let _ = ShowWindow(hwnd, SW_RESTORE);
+                let _ = SetForegroundWindow(hwnd);
+                return windows::Win32::Foundation::FALSE; // gevonden -> stop
+            }
+        }
+        TRUE
+    }
+    // Even wachten zodat een net-gestart venster bestaat.
+    std::thread::spawn(|| {
+        for _ in 0..10 {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            unsafe {
+                let _ = EnumWindows(Some(enum_cb), LPARAM(0));
+            }
+        }
+    });
+}
+
 /// Geeft de geselecteerde bestanden door aan de (al draaiende) LocalSend-app.
 /// LocalSend opent dan zijn eigen verzendscherm met de apparaten in het netwerk;
 /// Macsplorer doet zelf geen apparaat-detectie meer.
@@ -963,7 +997,9 @@ fn localsend(paths: Vec<String>) -> Result<(), String> {
             for p in &paths {
                 cmd.arg(p);
             }
-            return cmd.spawn().map(|_| ()).map_err(|e| e.to_string());
+            cmd.spawn().map_err(|e| e.to_string())?;
+            focus_localsend_window();
+            return Ok(());
         }
         // 2) Terugval: via PATH (gebruikelijke exe-namen).
         for name in ["localsend_app.exe", "localsend.exe", "localsend"] {
@@ -972,6 +1008,7 @@ fn localsend(paths: Vec<String>) -> Result<(), String> {
                 cmd.arg(p);
             }
             if cmd.spawn().is_ok() {
+                focus_localsend_window();
                 return Ok(());
             }
         }
