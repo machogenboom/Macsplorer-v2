@@ -600,11 +600,17 @@ const GLYPH={
 const TYPE_COLOR={folder:'#f3b13b',image:'#19c1e0',doc:'#3aa0f5',video:'#ff5c7a',audio:'#b07ef0',code:'#1bb673',archive:'#7b7bf0',exe:'#5b8def'};
 const SMALL_ICON=TYPE_COLOR;
 const ICON_PNG={folder:'folder.png',audio:'audio.png',archive:'zip.png',doc:'bestand.png',code:'bestand.png',image:'bestand.png',video:'bestand.png',exe:'exe.png'};
+const EXT_ICON={txt:'txt.png'};   // eigen icoon per extensie (alleen .txt)
 function glyphSVG(t){return GLYPH[t]||GLYPH.doc;}
 function iconHTML(t,ext){
   // Eigen mappictogram (uit instellingen) voor álle mappen.
   if(t==='folder'&&folderIcon&&toAssetUrl){
     return `<div class="glyphbg" style="color:${TYPE_COLOR.folder}">${glyphSVG('folder')}</div><img class="pngicon" src="${esc(toAssetUrl(folderIcon))}" alt="" data-fb="hide">`;
+  }
+  // Eigen icoon voor specifieke extensies (bv. .txt).
+  const exl=(ext||'').toLowerCase();
+  if(EXT_ICON[exl]){
+    return `<div class="glyphbg" style="color:${TYPE_COLOR[t]||'#90a0b8'}">${glyphSVG(t)}</div><img class="pngicon" src="assets/icons/${EXT_ICON[exl]}" alt="" data-fb="hide">`;
   }
   const png=ICON_PNG[t]||'bestand.png';
   const label=(png==='bestand.png'&&ext)?`<span class="extlbl">${esc(String(ext).toUpperCase().slice(0,4))}</span>`:'';
