@@ -1714,8 +1714,6 @@ function renderTypeIcons(){
 renderTypeIcons();
 /* ===== Instellingen-secties in-/uitklappen (onthouden) ===== */
 document.querySelectorAll('.sec-group').forEach(d=>{
-/* ===== Instellingen-secties in-/uitklappen (onthouden) ===== */
-document.querySelectorAll('.sec-group').forEach(d=>{
   const k=d.dataset.k;if(!k)return;
   const saved=LS('sec_'+k);
   if(saved===true||saved===false)d.open=saved;
