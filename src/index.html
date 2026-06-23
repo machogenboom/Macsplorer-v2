@@ -326,6 +326,13 @@ body.dark .tagdot{box-shadow:0 0 0 1.5px rgba(0,0,0,.4)}
 .field>label{font-size:13px;font-weight:600;display:block;margin-bottom:9px}
 .swatches{display:flex;gap:10px;flex-wrap:wrap}
 .colorrow{display:flex;align-items:center;gap:10px}
+.iconrow{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(var(--stroke),.2)}
+.iconrow:last-child{border-bottom:none}
+.iconrow-prev{width:32px;height:32px;flex:none;display:grid;place-items:center;border-radius:7px;background:rgba(var(--panel),.4);overflow:hidden}
+.iconrow-prev img{max-width:100%;max-height:100%;object-fit:contain}
+.iconrow-prev svg{width:22px;height:22px}
+.iconrow-label{flex:1;font-size:13px}
+.iconrow .btn{padding:5px 10px;font-size:12px}
 .colorpick{width:40px;height:34px;border:1px solid rgba(var(--stroke),.4);border-radius:10px;background:rgba(var(--panel),.4);cursor:pointer;padding:3px;flex:none}
 .colorpick::-webkit-color-swatch{border:none;border-radius:6px}
 .colorpick::-webkit-color-swatch-wrapper{padding:0}
@@ -503,8 +510,6 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
     <div class="field"><label>Thema</label><div class="seg" id="themeSeg"><button data-theme="light" class="on">☀️ Licht</button><button data-theme="dark">🌙 Donker</button></div></div>
     <div class="field"><label>Accentkleur</label>
       <div class="colorrow"><input type="color" class="colorpick" id="accent1" title="Hoofdkleur"><input type="color" class="colorpick" id="accent2" title="Tweede kleur (verloop)"><span class="hint" style="margin:0">Kies je eigen kleuren — twee kleuren = verloop, of beide gelijk voor één kleur.</span></div></div>
-    <div class="field"><label>Mappictogram</label><div><button class="btn ghost" id="pickFolderIcon">🖼️ Afbeelding kiezen…</button> <button class="btn ghost" id="resetFolderIcon">Standaard</button></div>
-      <div class="hint">Kies een eigen PNG/SVG voor álle mappen in de weergave. Standaard = het ingebouwde map-icoon.</div></div>
     <div class="field"><label>Glass-intensiteit</label><input type="range" min="0" max="100" value="55" class="slider" id="glassSlider"></div>
     <div class="field"><label>Wazigheid (blur)</label><input type="range" min="0" max="60" value="30" class="slider" id="blurSlider"></div>
     <div class="field"><label>Hoekafronding</label><input type="range" min="6" max="30" value="22" class="slider" id="radiusSlider"></div>
@@ -515,6 +520,11 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
     <div class="field"><label>Automatisch verversen</label><div class="seg" id="autoRefreshSeg"><button data-ar="1">Aan</button><button data-ar="0" class="on">Uit</button></div>
       <div class="hint">Aan = nieuwe of gewijzigde bestanden verschijnen vanzelf. Uit = ververs handmatig met de knop of F5.</div></div>
     <div class="field"><label>Slogans (wisselen elke 15 min)</label><button class="btn ghost" id="editSlogans">Slogans bewerken…</button></div>
+  </details>
+  <details class="sec-group" data-k="iconen">
+    <summary class="sec">🖼️ Pictogrammen (per bestandstype)</summary>
+    <div class="field"><div id="typeIconList"></div>
+      <div class="hint">Kies een eigen PNG/SVG-icoon per type (mappen, afbeeldingen, documenten, video, audio, code, archief, programma's). ↩︎ zet terug naar standaard. Eigen .txt-icoon staat los hiervan ingesteld.</div></div>
   </details>
   <details class="sec-group" data-k="labels">
     <summary class="sec">🏷️ Labels (kleuren)</summary>
@@ -600,14 +610,14 @@ const GLYPH={
 const TYPE_COLOR={folder:'#f3b13b',image:'#19c1e0',doc:'#3aa0f5',video:'#ff5c7a',audio:'#b07ef0',code:'#1bb673',archive:'#7b7bf0',exe:'#5b8def'};
 const SMALL_ICON=TYPE_COLOR;
 const ICON_PNG={folder:'folder.png',audio:'audio.png',archive:'zip.png',doc:'bestand.png',code:'bestand.png',image:'bestand.png',video:'bestand.png',exe:'exe.png'};
-const EXT_ICON={txt:'txt.png'};   // eigen icoon per extensie (alleen .txt)
+const EXT_ICON={txt:'txt.png'};   // ingebouwd icoon per extensie (bv. .txt)
 function glyphSVG(t){return GLYPH[t]||GLYPH.doc;}
 function iconHTML(t,ext){
-  // Eigen mappictogram (uit instellingen) voor álle mappen.
-  if(t==='folder'&&folderIcon&&toAssetUrl){
-    return `<div class="glyphbg" style="color:${TYPE_COLOR.folder}">${glyphSVG('folder')}</div><img class="pngicon" src="${esc(toAssetUrl(folderIcon))}" alt="" data-fb="hide">`;
+  // 1) Eigen icoon per bestandstype (uit instellingen → Pictogrammen).
+  if(typeIcons[t]&&toAssetUrl){
+    return `<div class="glyphbg" style="color:${TYPE_COLOR[t]||'#90a0b8'}">${glyphSVG(t)}</div><img class="pngicon" src="${esc(toAssetUrl(typeIcons[t]))}" alt="" data-fb="hide">`;
   }
-  // Eigen icoon voor specifieke extensies (bv. .txt).
+  // 2) Ingebouwd icoon voor specifieke extensies (bv. .txt).
   const exl=(ext||'').toLowerCase();
   if(EXT_ICON[exl]){
     return `<div class="glyphbg" style="color:${TYPE_COLOR[t]||'#90a0b8'}">${glyphSVG(t)}</div><img class="pngicon" src="assets/icons/${EXT_ICON[exl]}" alt="" data-fb="hide">`;
@@ -644,7 +654,8 @@ let tags=LS('tags')||[{id:'t1',name:'Belangrijk',color:'#ff453a'},{id:'t2',name:
 let fileTags=LS('fileTags')||{};       // pad -> [tagId]
 let favIcons=LS('favIcons')||{};       // pad -> eigen icoon-pad
 let driveOpen=LS('driveOpen')||{};     // schijf/cloud-pad -> map die geopend wordt bij klik
-let folderIcon=LS('folderIcon')||'';   // eigen pictogram voor álle mappen (leeg = standaard)
+let typeIcons=LS('typeIcons')||{};     // eigen pictogram per bestandstype (folder/image/doc/…)
+{const _fi=LS('folderIcon');if(_fi&&!typeIcons.folder){typeIcons.folder=_fi;SS('typeIcons',typeIcons);}}  // migratie oude mappictogram-instelling
 let sortByPath=LS('sortByPath')||{};   // pad -> onthouden sortering
 const dirSizeCache=new Map();
 function tagById(id){return tags.find(t=>t.id===id);}
@@ -1675,16 +1686,34 @@ async function pickFavIcon(path){
   if(!LIVE){const p=prompt('Pad naar PNG-icoon:');if(p){favIcons[path]=p;SS('favIcons',favIcons);renderNav();}return;}
   try{const p=await invoke('pick_image');if(p){favIcons[path]=p;SS('favIcons',favIcons);renderNav();}}catch(e){}
 }
-/* ===== Eigen mappictogram (instellingen) ===== */
-function setFolderIcon(p){folderIcon=p||'';SS('folderIcon',folderIcon);render();}
-{
-  const pb=document.getElementById('pickFolderIcon'),rb=document.getElementById('resetFolderIcon');
-  if(pb)pb.onclick=async()=>{
-    if(!LIVE){const p=prompt('Pad naar PNG/SVG-icoon:');if(p)setFolderIcon(p);return;}
-    try{const p=await invoke('pick_image');if(p)setFolderIcon(p);}catch(e){}
-  };
-  if(rb)rb.onclick=()=>setFolderIcon('');
+/* ===== Eigen pictogram per bestandstype (instellingen → Pictogrammen) ===== */
+const ICON_TYPES=[
+  {t:'folder',label:'Mappen'},{t:'image',label:'Afbeeldingen'},{t:'doc',label:'Documenten'},
+  {t:'video',label:'Video'},{t:'audio',label:'Audio'},{t:'code',label:'Code'},
+  {t:'archive',label:'Archief'},{t:'exe',label:"Programma's"}
+];
+function setTypeIcon(t,p){if(p)typeIcons[t]=p;else delete typeIcons[t];SS('typeIcons',typeIcons);render();renderTypeIcons();}
+async function pickTypeIcon(t){
+  if(!LIVE){const p=prompt('Pad naar PNG/SVG-icoon:');if(p)setTypeIcon(t,p);return;}
+  try{const p=await invoke('pick_image');if(p)setTypeIcon(t,p);}catch(e){}
 }
+function renderTypeIcons(){
+  const w=document.getElementById('typeIconList');if(!w)return;w.innerHTML='';
+  ICON_TYPES.forEach(it=>{
+    const cur=typeIcons[it.t];
+    const prev=(cur&&toAssetUrl)?`<img src="${esc(toAssetUrl(cur))}" alt="">`:`<span style="color:${TYPE_COLOR[it.t]||'#90a0b8'}">${glyphSVG(it.t)}</span>`;
+    const row=document.createElement('div');row.className='iconrow';
+    row.innerHTML=`<div class="iconrow-prev">${prev}</div><span class="iconrow-label">${it.label}</span>`+
+      `<button class="btn ghost iconrow-pick" data-t="${it.t}">Kies…</button>`+
+      (cur?`<button class="btn ghost iconrow-reset" data-t="${it.t}" title="Standaard">↩︎</button>`:'');
+    w.appendChild(row);
+  });
+  w.querySelectorAll('.iconrow-pick').forEach(b=>b.onclick=()=>pickTypeIcon(b.dataset.t));
+  w.querySelectorAll('.iconrow-reset').forEach(b=>b.onclick=()=>setTypeIcon(b.dataset.t,''));
+}
+renderTypeIcons();
+/* ===== Instellingen-secties in-/uitklappen (onthouden) ===== */
+document.querySelectorAll('.sec-group').forEach(d=>{
 /* ===== Instellingen-secties in-/uitklappen (onthouden) ===== */
 document.querySelectorAll('.sec-group').forEach(d=>{
   const k=d.dataset.k;if(!k)return;
