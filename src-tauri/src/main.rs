@@ -849,6 +849,34 @@ fn mirror_image(path: String) -> Result<String, String> {
     Ok(dest.to_string_lossy().to_string())
 }
 
+/// Stelt de afbeelding in als bureaubladachtergrond (Windows).
+#[cfg(windows)]
+#[tauri::command]
+fn set_wallpaper(path: String) -> Result<(), String> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SystemParametersInfoW, SPIF_SENDCHANGE, SPIF_UPDATEINIFILE, SPI_SETDESKWALLPAPER,
+    };
+    if !Path::new(&path).exists() {
+        return Err("Bestand bestaat niet".into());
+    }
+    let w: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        SystemParametersInfoW(
+            SPI_SETDESKWALLPAPER,
+            0,
+            Some(w.as_ptr() as *mut std::ffi::c_void),
+            SPIF_UPDATEINIFILE | SPIF_SENDCHANGE,
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+#[cfg(not(windows))]
+#[tauri::command]
+fn set_wallpaper(_path: String) -> Result<(), String> {
+    Err("Alleen op Windows".into())
+}
+
 /// Totale grootte van een map (recursief). Draait op de achtergrond.
 #[tauri::command]
 async fn dir_size(path: String) -> u64 {
@@ -1920,6 +1948,7 @@ fn main() {
             delete_paths,
             zip_paths,
             mirror_image,
+            set_wallpaper,
             drag_icon,
             dir_size,
             stat_paths,

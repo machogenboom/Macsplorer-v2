@@ -1023,6 +1023,7 @@ function showCtxMenu(x,y){
   h+=it('🗂','Nieuwe map met selectie','group','','Ctrl⇧N');
   h+=it('🗜','Comprimeren (zip)','zip');
   if(hasImg)h+=it('🖼','Kopieer afbeelding (plakken)','copyimg');
+  if(hasImg)h+=it('🖥️','Stel in als achtergrond','wallpaper');
   if(hasImg)h+=it('🪞','Afbeelding spiegelen','mirror');
   if(hasDir)h+=it('⭐','Aan favorieten toevoegen','pin');
   if(hasDir)h+=it('📂','Map uitpakken (inhoud eruit)','unwrap');
@@ -1180,6 +1181,7 @@ async function runCtx(a){
     else if(a==='zip'){if(!LIVE)return;const def=(ents.length===1?baseName(paths[0]).replace(/\.[^.]+$/,''):'archief')+'.zip';const nm=prompt('Naam van het zip-bestand:',def);if(!nm)return;await invoke('zip_paths',{paths,zipPath:joinPath(dir,nm.endsWith('.zip')?nm:nm+'.zip')});await reloadFolder();flash('Zip gemaakt');}
     else if(a==='mirror'){if(!LIVE)return;let n=0;for(const e of ents){if(!e.isDir&&typeOf(e)==='image'){await invoke('mirror_image',{path:e.path});n++;}}await reloadFolder();flash(n+' gespiegeld');}
     else if(a==='copyimg'){if(!LIVE)return;const im=ents.find(e=>!e.isDir&&typeOf(e)==='image');if(!im)return;try{await invoke('copy_image',{path:im.path});flash('Afbeelding gekopieerd — plak met Ctrl+V');}catch(e){alert('Kopiëren mislukt: '+e);}}
+    else if(a==='wallpaper'){if(!LIVE)return;const im=ents.find(e=>!e.isDir&&typeOf(e)==='image');if(!im)return;try{await invoke('set_wallpaper',{path:im.path});flash('Bureaubladachtergrond ingesteld');}catch(e){alert('Achtergrond instellen mislukt: '+e);}}
     else if(a==='group'){if(!LIVE)return;const np=await invoke('create_folder',{parent:dir,name:'Nieuwe map'});await invoke('move_paths',{paths,destDir:np});await reloadFolder();renameByPath(np);}
     else if(a==='rename'){if(paths.length===1)renameByPath(paths[0]);}
     else if(a==='pasterename'){specialPasteRename();}
@@ -1207,21 +1209,42 @@ function fallbackCopy(text){const ta=document.createElement('textarea');ta.value
       if(e.button!==0||e.target.closest('.card,.row,.ctxmenu'))return;
       const pi=files.dataset.pane==='1'?1:0;
       if(pi<panes.length)focusPane(tabs[panes[pi]]);
-      const additive=e.ctrlKey||e.metaKey;
+      const additive=e.ctrlKey||e.metaKey;           // Ctrl/Cmd = bij selectie optellen
       const base=additive?new Set(tab().selSet):new Set();
       if(!additive){tab().selSet=new Set();markSel();closePreview();}
-      const rect=files.getBoundingClientRect(),sx=e.clientX,sy=e.clientY;
+      const rect=files.getBoundingClientRect();
+      // Startpunt in CONTENT-coördinaten (scroll-bewust), zodat scrollen de
+      // selectie meeneemt en al-geselecteerde items behouden blijven.
+      const cx0=e.clientX-rect.left+files.scrollLeft;
+      const cy0=e.clientY-rect.top+files.scrollTop;
+      let lastX=e.clientX,lastY=e.clientY,raf=0;
       const band=document.createElement('div');band.className='rubber';files.appendChild(band);
-      const move=ev=>{
-        const x=Math.min(ev.clientX,sx)-rect.left+files.scrollLeft,y=Math.min(ev.clientY,sy)-rect.top+files.scrollTop;
-        band.style.left=x+'px';band.style.top=y+'px';band.style.width=Math.abs(ev.clientX-sx)+'px';band.style.height=Math.abs(ev.clientY-sy)+'px';
-        const bx1=Math.min(ev.clientX,sx),by1=Math.min(ev.clientY,sy),bx2=Math.max(ev.clientX,sx),by2=Math.max(ev.clientY,sy);
+      const recompute=()=>{
+        const cx=lastX-rect.left+files.scrollLeft, cy=lastY-rect.top+files.scrollTop;
+        const x1=Math.min(cx,cx0),y1=Math.min(cy,cy0),x2=Math.max(cx,cx0),y2=Math.max(cy,cy0);
+        band.style.left=x1+'px';band.style.top=y1+'px';band.style.width=(x2-x1)+'px';band.style.height=(y2-y1)+'px';
         const ss=tab().selSet;ss.clear();base.forEach(p=>ss.add(p));
-        files.querySelectorAll('.card,.row').forEach(el=>{const r=el.getBoundingClientRect();if(r.left<bx2&&r.right>bx1&&r.top<by2&&r.bottom>by1){const p=el.getAttribute('title');if(p)ss.add(p);}});
+        files.querySelectorAll('.card,.row').forEach(el=>{
+          const er=el.getBoundingClientRect();
+          const ex1=er.left-rect.left+files.scrollLeft, ey1=er.top-rect.top+files.scrollTop;
+          if(ex1<x2&&ex1+er.width>x1&&ey1<y2&&ey1+er.height>y1){const p=el.getAttribute('title');if(p)ss.add(p);}
+        });
         markSel();
       };
-      const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);band.remove();};
-      document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+      const tick=()=>{                                // auto-scroll bij de randen
+        const edge=42,max=files.scrollHeight-files.clientHeight;let d=0;
+        if(lastY<rect.top+edge)d=-(rect.top+edge-lastY);
+        else if(lastY>rect.bottom-edge)d=(lastY-(rect.bottom-edge));
+        if(d){const ns=Math.max(0,Math.min(max,files.scrollTop+d*0.5));if(ns!==files.scrollTop){files.scrollTop=ns;recompute();}}
+        raf=requestAnimationFrame(tick);
+      };
+      const move=ev=>{lastX=ev.clientX;lastY=ev.clientY;ev.preventDefault();recompute();};
+      const onScroll=()=>recompute();                 // handmatig wheel-scrollen
+      const up=()=>{cancelAnimationFrame(raf);document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);files.removeEventListener('scroll',onScroll);band.remove();};
+      document.addEventListener('mousemove',move);
+      document.addEventListener('mouseup',up);
+      files.addEventListener('scroll',onScroll);
+      raf=requestAnimationFrame(tick);
     });
   });
 })();
