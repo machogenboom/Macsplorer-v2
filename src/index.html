@@ -144,7 +144,12 @@ body.resizing *{transition:none !important}
 .pane-head .ph-btn:hover{background:rgba(var(--accent),.9);color:#fff;border-color:transparent}
 .pane-head .ph-close:hover{background:#ff453a;color:#fff;border-color:transparent}
 /* In split verdwijnt de gedeelde tabbalk; elke helft heeft zijn eigen tab. */
-.main.split .tabbar{display:none}
+/* Tabbalk blijft zichtbaar in split: de split is één gegroepeerd tabblad. */
+.tab.tab-group .tn{display:inline-flex;align-items:center;gap:6px}
+.tab.tab-group .gsep{opacity:.5;font-weight:400}
+.tab.tab-group::before{content:'';width:13px;height:11px;flex:none;border-radius:2px;
+  background:linear-gradient(90deg,currentColor 0 45%,transparent 45% 55%,currentColor 55% 100%);opacity:.7}
+.tab.tab-group.gh::before{background:linear-gradient(180deg,currentColor 0 45%,transparent 45% 55%,currentColor 55% 100%)}
 .main.split-hint::after{content:'';position:absolute;right:0;top:46px;bottom:0;width:42%;background:rgba(var(--accent),.14);border-left:2px dashed rgb(var(--accent));pointer-events:none;z-index:6;border-radius:0 0 var(--radius) 0}
 .main.split-hint-h::after{content:'';position:absolute;left:0;right:0;bottom:0;height:42%;background:rgba(var(--accent),.14);border-top:2px dashed rgb(var(--accent));pointer-events:none;z-index:6;border-radius:0 0 var(--radius) var(--radius)}
 .main.split.split-h .filesrow{flex-direction:column}
@@ -667,9 +672,20 @@ function tagDots(path){const ids=fileTags[path]||[];if(!ids.length)return '';ret
 let ALL_ROOTS=[], baseLocs=[];
 
 /* ===== Tabs ===== */
-function mkTab(path){return {path:path||'',title:'Start',list:[],history:[],future:[],search:'',sel:null,selSet:new Set(),anchor:null,searching:false,expanded:new Set(),childCache:new Map(),displayed:[]};}
+let tabSeq=0,groupSeq=0;
+function mkTab(path){return {id:++tabSeq,groupId:null,groupPos:0,groupDir:'v',path:path||'',title:'Start',list:[],history:[],future:[],search:'',sel:null,selSet:new Set(),anchor:null,searching:false,expanded:new Set(),childCache:new Map(),displayed:[]};}
 let tabs=[mkTab('')];
 let panes=[0],activePane=0;                 // panes = getoonde tab-indexen (1 of 2)
+// ===== Split-groepen: twee tabs samengevoegd tot één gegroepeerd tabblad =====
+function membersIdx(gid){return gid?tabs.map((t,i)=>({t,i})).filter(o=>o.t.groupId===gid).sort((a,b)=>a.t.groupPos-b.t.groupPos).map(o=>o.i):[];}
+function dissolveGroup(gid){if(!gid)return;tabs.forEach(t=>{if(t.groupId===gid){t.groupId=null;t.groupPos=0;}});}
+function activateGroup(gid){const idx=membersIdx(gid);if(idx.length<2)return;splitDir=tabs[idx[0]].groupDir||'v';SS('splitDir',splitDir);panes=idx.slice(0,2);activePane=0;applySplitClasses();syncFromTab();}
+function normalizePanes(){
+  panes=panes.filter(ix=>ix>=0&&ix<tabs.length);if(!panes.length)panes=[0];
+  if(panes.length>1){const a=tabs[panes[0]],b=tabs[panes[1]];if(!a||!b||!a.groupId||a.groupId!==b.groupId)panes=[panes[0]];}
+  if(activePane>=panes.length)activePane=panes.length-1;
+  applySplitClasses();
+}
 function aIdx(){return panes[activePane];}
 function tab(){return tabs[aIdx()];}
 function paneArea(pi){return document.getElementById(pi===0?'fileArea':'fileArea1');}
@@ -689,8 +705,9 @@ function updatePaneHeads(){
 function closePane(pi){
   if(panes.length<2)return;
   const keep=panes[1-pi];
+  dissolveGroup(tabs[panes[0]].groupId);   // groep wordt opgeheven; beide tabs blijven los bestaan
   panes=[keep];activePane=0;
-  document.querySelector('.main').classList.remove('split','split-h');
+  applySplitClasses();
   syncFromTab();
 }
 (function(){
@@ -715,21 +732,39 @@ function focusPane(t){const pi=panes.findIndex(ix=>tabs[ix]===t);if(pi<0||pi===a
 
 function renderTabs(){
   const tb=document.getElementById('tabbar');tb.innerHTML='';
+  const rendered=new Set();
+  const inGroupView=panes.length>1;
   tabs.forEach((t,i)=>{
+    if(rendered.has(t.id))return;
+    if(t.groupId){
+      // ---- Gegroepeerd tabblad (split): één gecombineerde chip ----
+      const idx=membersIdx(t.groupId);if(idx.length<2){t.groupId=null;} else {
+        idx.forEach(ix=>rendered.add(tabs[ix].id));
+        const active=inGroupView&&idx[0]===panes[0]&&idx[1]===panes[1];
+        const dir=tabs[idx[0]].groupDir||'v';
+        const d=document.createElement('div');
+        d.className='tab tab-group'+(active?' on':'')+(dir==='h'?' gh':'');
+        d.innerHTML=`<span class="tn">${esc(tabs[idx[0]].title||'Start')}<span class="gsep">${dir==='h'?'/':'|'}</span>${esc(tabs[idx[1]].title||'Start')}</span>`;
+        const c=document.createElement('button');c.className='tc';c.textContent='✕';
+        c.onclick=e=>{e.stopPropagation();closeGroup(t.groupId);};d.appendChild(c);
+        d.onclick=()=>{if(suppressClick){suppressClick=false;return;}activateGroup(t.groupId);};
+        tb.appendChild(d);
+        return;
+      }
+    }
+    // ---- Gewoon tabblad ----
     const d=document.createElement('div');
-    const isA=i===aIdx(),inSplit=panes.length>1&&panes.includes(i);
-    d.className='tab'+(isA?' on':'')+(inSplit&&!isA?' on2':'');
+    const isA=!inGroupView&&i===aIdx();
+    d.className='tab'+(isA?' on':'');
     if(t.path)d.dataset.path=t.path;   // doeldoel voor sleep-naar-tabblad
     d.innerHTML=`<span class="tn">${esc(t.title||'Start')}</span>`;
     if(tabs.length>1){const c=document.createElement('button');c.className='tc';c.textContent='✕';c.onclick=e=>{e.stopPropagation();closeTab(i);};d.appendChild(c);}
-    d.onclick=()=>{if(suppressClick){suppressClick=false;return;}panes[activePane]=i;syncFromTab();};
+    d.onclick=()=>{if(suppressClick){suppressClick=false;return;}panes=[i];activePane=0;applySplitClasses();syncFromTab();};
     enableTabDrag(d,i);
     tb.appendChild(d);
   });
   const add=document.createElement('button');add.className='tab-add';add.textContent='+';add.onclick=newTab;
   tb.appendChild(add);
-  // In split-modus is de tabbalk verborgen; de bediening (richting wisselen,
-  // helft sluiten) zit in de mapkoppen van elke helft.
 }
 let splitDir=LS('splitDir')||'v';   // 'v' = naast elkaar, 'h' = onder elkaar
 function applySplitClasses(){const m=document.querySelector('.main');const on=panes.length>1;m.classList.toggle('split',on);m.classList.toggle('split-h',on&&splitDir==='h');}
@@ -754,19 +789,28 @@ let suppressClick=false;
 function enterSplit(rightIdx){
   let leftIdx=aIdx();
   if(leftIdx===rightIdx){leftIdx=tabs.findIndex((_,ix)=>ix!==rightIdx);if(leftIdx<0)return;}
+  // Maak van de twee tabs één gegroepeerd tabblad. Bestaande groepen worden eerst losgekoppeld.
+  dissolveGroup(tabs[leftIdx].groupId);dissolveGroup(tabs[rightIdx].groupId);
+  const gid=++groupSeq;
+  tabs[leftIdx].groupId=gid;tabs[leftIdx].groupPos=0;tabs[leftIdx].groupDir=splitDir;
+  tabs[rightIdx].groupId=gid;tabs[rightIdx].groupPos=1;tabs[rightIdx].groupDir=splitDir;
   panes=[leftIdx,rightIdx];activePane=1;
   applySplitClasses();
   syncFromTab();
 }
-function exitSplit(){panes=[aIdx()];activePane=0;document.querySelector('.main').classList.remove('split','split-h');syncFromTab();}
-function toggleSplitDir(){splitDir=splitDir==='h'?'v':'h';SS('splitDir',splitDir);applySplitClasses();updatePaneHeads();}
-function newTab(){const cur=tab().path||(baseLocs[0]&&baseLocs[0].path)||'';tabs.push(mkTab(cur));panes[activePane]=tabs.length-1;renderTabs();navigate(cur);}
+function exitSplit(){if(panes.length<2)return;const keep=panes[activePane];dissolveGroup(tabs[panes[0]].groupId);panes=[keep];activePane=0;applySplitClasses();syncFromTab();}
+function closeGroup(gid){const idx=membersIdx(gid);if(!idx.length)return;dissolveGroup(gid);
+  // Sluit beide helften (hoogste index eerst zodat de andere index klopt blijft).
+  idx.sort((a,b)=>b-a).forEach(ix=>{if(tabs.length>1)tabs.splice(ix,1);});
+  panes=[0];activePane=0;normalizePanes();syncFromTab();}
+function toggleSplitDir(){splitDir=splitDir==='h'?'v':'h';SS('splitDir',splitDir);if(panes.length>1)membersIdx(tabs[panes[0]].groupId).forEach(ix=>tabs[ix].groupDir=splitDir);applySplitClasses();updatePaneHeads();renderTabs();}
+function newTab(){const cur=tab().path||(baseLocs[0]&&baseLocs[0].path)||'';tabs.push(mkTab(cur));panes=[tabs.length-1];activePane=0;applySplitClasses();renderTabs();navigate(cur);}
 function closeTab(i){
   if(tabs.length<=1)return;
+  dissolveGroup(tabs[i].groupId);          // zat dit tabblad in een split, dan valt de groep uiteen
   tabs.splice(i,1);
   panes=panes.map(ix=>ix>i?ix-1:ix).map(ix=>Math.max(0,Math.min(ix,tabs.length-1)));
-  if(panes.length>1&&panes[0]===panes[1]){panes=[panes[0]];activePane=0;document.querySelector('.main').classList.remove('split');}
-  if(activePane>=panes.length)activePane=panes.length-1;
+  normalizePanes();
   syncFromTab();
 }
 function syncFromTab(){const t=tab();document.getElementById('searchInput').value=t.search||'';updateScopeBtn();renderTabs();setBreadcrumb(t.path);updateNav();syncPaneActiveClass();render();}
@@ -1206,7 +1250,7 @@ async function runCtx(a){
     else if(a==='pasterename'){specialPasteRename();}
     else if(a==='delete'){if(!LIVE)return;await invoke('delete_paths',{paths});await reloadFolder();flash(paths.length+' naar prullenbak');}
     else if(a==='localsend'){if(!LIVE)return;try{await invoke('localsend',{paths});flash('Geopend in LocalSend');}catch(e){alert('Kon LocalSend niet openen:\n\n'+e);}}
-    else if(a==='newtab'){const d=ents.find(x=>x.isDir)||ents[0];if(d&&d.isDir){tabs.push(mkTab(d.path));panes[activePane]=tabs.length-1;renderTabs();navigate(d.path);}}
+    else if(a==='newtab'){const d=ents.find(x=>x.isDir)||ents[0];if(d&&d.isDir){tabs.push(mkTab(d.path));panes=[tabs.length-1];activePane=0;applySplitClasses();renderTabs();navigate(d.path);}}
     else if(a==='location'){const p=paths[0];if(p){const par=parent(p);await navigate(par);const t2=tab();t2.selSet=new Set([p]);t2.sel=p;setTimeout(()=>{markSel();const el=[...document.querySelectorAll('.card,.row')].find(x=>x.getAttribute('title')===p);if(el)el.scrollIntoView({block:'center'});},80);}}
     else if(a==='copypath'){copyClip(paths.join('\r\n'));flash(paths.length>1?paths.length+' paden gekopieerd':'Pad gekopieerd');}
     else if(a==='duplicate'){if(!LIVE)return;await invoke('copy_paths',{paths,destDir:dir});await reloadFolder();flash('Gedupliceerd');}
