@@ -560,6 +560,8 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
 const T=window.__TAURI__;
 const invoke=T?.core?.invoke?(c,a)=>T.core.invoke(c,a):null;
 const toAssetUrl=T?.core?.convertFileSrc?(p)=>T.core.convertFileSrc(p):null;
+// Cache-buster: voegt de wijzigingstijd toe zodat een gewijzigd/gespiegeld bestand altijd vers wordt geladen
+function assetUrl(p,f){if(!toAssetUrl||!p)return '';let u=toAssetUrl(p);const v=(f&&f.modified)?(typeof f.modified==='number'?f.modified:Date.parse(f.modified)||0):0;if(!v)return u;return u+(u.includes('?')?'&':'?')+'v='+v;}
 const appWindow=T?.window?.getCurrentWindow?T.window.getCurrentWindow():null;
 const LIVE=!!invoke;
 const SEP=navigator.userAgent.includes('Windows')?'\\':'/';
@@ -1470,7 +1472,7 @@ async function updatePreview(f){
     let dim=dimCache.get(f.path);
     if(!dim&&LIVE){await ensureDims([f]);dim=dimCache.get(f.path);}
     if(tok!==pvToken)return;
-    const url=toAssetUrl?toAssetUrl(f.path):'';
+    const url=assetUrl(f.path,f);
     b.innerHTML=`${url?`<img src="${esc(url)}" alt="">`:''}<h4>${esc(f.name)}</h4>
       <div class="pmeta"><b>Type:</b> ${esc((f.ext||'').toUpperCase())||'—'}<br><b>Grootte:</b> ${fmtSize(f.size)||'—'}<br>
       <b>Afmetingen:</b> ${dim&&dim[0]?dim[0]+'×'+dim[1]+' px':'—'}<br><b>Gewijzigd:</b> ${fmtDate(f.modified)}</div>
@@ -1501,7 +1503,7 @@ async function openProps(ents){
     document.getElementById('pmClose').onclick=close;return;
   }
   const f=ents[0],t=typeOf(f),loc=parent(f.path);
-  const icon=(t==='image'&&toAssetUrl)?`<img src="${esc(toAssetUrl(f.path))}" alt="">`:`<span style="color:${TYPE_COLOR[t]||'#90a0b8'}">${glyphSVG(t)}</span>`;
+  const icon=(t==='image'&&toAssetUrl)?`<img src="${esc(assetUrl(f.path,f))}" alt="">`:`<span style="color:${TYPE_COLOR[t]||'#90a0b8'}">${glyphSVG(t)}</span>`;
   let rows=`<div class="pm-row"><span class="pm-k">Type</span><span class="pm-v">${f.isDir?'Map':esc((f.ext||'').toUpperCase()||'Bestand')+(f.ext?'-bestand':'')}</span></div>
     <div class="pm-row"><span class="pm-k">Locatie</span><span class="pm-v">${esc(loc)}</span></div>`;
   if(f.isDir)rows+=`<div class="pm-row"><span class="pm-k">Grootte</span><span class="pm-v" id="pmSize">… berekenen</span></div><div class="pm-row"><span class="pm-k">Bevat</span><span class="pm-v" id="pmCount">…</span></div>`;
