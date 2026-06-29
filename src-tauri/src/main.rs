@@ -1600,30 +1600,46 @@ fn shell_drag(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
     use windows::Win32::System::Ole::{
         IDropSource, DROPEFFECT_COPY, DROPEFFECT_LINK, DROPEFFECT_MOVE,
     };
+    use windows::Win32::UI::Shell::Common::ITEMIDLIST;
     use windows::Win32::UI::Shell::{
-        BHID_DataObject, SHCreateItemFromParsingName, SHDoDragDrop, IShellItem,
+        BHID_DataObject, ILFree, SHCreateShellItemArrayFromIDLists, SHDoDragDrop, SHParseDisplayName,
     };
-    let first = match paths.into_iter().next() {
-        Some(p) => p,
-        None => return Err("geen pad".into()),
-    };
+    if paths.is_empty() {
+        return Err("geen pad".into());
+    }
     // De sleep MOET op de hoofdthread draaien (die het venster en de muis-invoer
     // bezit), anders pakt DoDragDrop de lopende muisbeweging niet op. OLE is op
     // die thread al geinitialiseerd door de webview.
     app.run_on_main_thread(move || unsafe {
-        let w: Vec<u16> = first.encode_utf16().chain(std::iter::once(0)).collect();
-        if let Ok(item) =
-            SHCreateItemFromParsingName::<_, _, IShellItem>(PCWSTR(w.as_ptr()), None::<&IBindCtx>)
-        {
-            if let Ok(data) =
-                item.BindToHandler::<_, IDataObject>(None::<&IBindCtx>, &BHID_DataObject)
+        // Zet elk pad om naar een absolute PIDL.
+        let mut pidls: Vec<*const ITEMIDLIST> = Vec::with_capacity(paths.len());
+        for p in &paths {
+            let w: Vec<u16> = p.encode_utf16().chain(std::iter::once(0)).collect();
+            let mut pidl: *mut ITEMIDLIST = std::ptr::null_mut();
+            if SHParseDisplayName(PCWSTR(w.as_ptr()), None, &mut pidl, 0, None).is_ok()
+                && !pidl.is_null()
             {
-                let _ = SHDoDragDrop(
-                    HWND::default(),
-                    &data,
-                    None::<&IDropSource>,
-                    DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK,
-                );
+                pidls.push(pidl as *const ITEMIDLIST);
+            }
+        }
+        if !pidls.is_empty() {
+            // Een IShellItemArray levert een data-object met ZOWEL CF_HDROP (echte
+            // bestandspaden, nodig voor mappen/Verkenner) ALS de shell-ID-list die
+            // strikte drop-zones (Figma, Weave) accepteren.
+            if let Ok(arr) = SHCreateShellItemArrayFromIDLists(&pidls) {
+                if let Ok(data) =
+                    arr.BindToHandler::<_, IDataObject>(None::<&IBindCtx>, &BHID_DataObject)
+                {
+                    let _ = SHDoDragDrop(
+                        HWND::default(),
+                        &data,
+                        None::<&IDropSource>,
+                        DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK,
+                    );
+                }
+            }
+            for pidl in &pidls {
+                ILFree(Some(*pidl));
             }
         }
     })
