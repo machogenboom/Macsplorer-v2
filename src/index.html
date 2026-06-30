@@ -824,6 +824,16 @@ function baseName(p){return p.split(/[\\/]/).filter(Boolean).pop()||p;}
 
 /* ===== Thumbnails (gecachte mini-previews) ===== */
 const thumbCache=new Map(),MAXC=5;let activeJobs=0;const tq=[];
+// Wist de front-end caches voor bestanden waarvan grootte/wijzigdatum is veranderd,
+// zodat thumbnails, afmetingen én de preview de nieuwe versie tonen i.p.v. de oude.
+function diffInvalidate(oldList,newList){
+  const om=new Map((oldList||[]).map(f=>[f.path,f.size+'|'+f.modified]));
+  const changed=new Set();
+  (newList||[]).forEach(f=>{
+    if(om.get(f.path)!==(f.size+'|'+f.modified)){thumbCache.delete(f.path);dimCache.delete(f.path);changed.add(f.path);}
+  });
+  return changed;
+}
 function pump(){while(activeJobs<MAXC&&tq.length){const j=tq.shift();activeJobs++;j().finally(()=>{activeJobs--;pump();});}}
 function showThumb(el,url,cover){
   if(!el.isConnected)return;const im=new Image();
@@ -1021,12 +1031,13 @@ let clip={mode:null,paths:[]};    // intern klembord (kopiëren/knippen)
 let dragIconPath='';              // sleep-icoon (voor naar buiten slepen)
 async function startNativeDrag(paths){
   if(!LIVE||!paths.length)return;
-  // Eén bestand: sleep precies zoals Verkenner (shell data-object, op de
-  // hoofdthread) zodat strikte drop-zones zoals Figma/Weave het accepteren.
-  if(paths.length===1){
-    try{await invoke('shell_drag',{paths});return;}
-    catch(e){console.warn('shell_drag faalde, val terug op plugin:',e);}
-  }
+  // Sleep precies zoals Verkenner via het echte shell data-object (op de
+  // hoofdthread), óók voor meerdere bestanden tegelijk. Dat data-object bevat
+  // zowel CF_HDROP als de shell-ID-list, zodat strikte drop-zones zoals
+  // Figma/Weave de selectie accepteren. Alleen bij falen vallen we terug op de
+  // plugin (die door zulke zones soms wordt geweigerd).
+  try{await invoke('shell_drag',{paths});return;}
+  catch(e){console.warn('shell_drag faalde, val terug op plugin:',e);}
   const Ch=window.__TAURI__&&window.__TAURI__.core&&window.__TAURI__.core.Channel;
   const onEvent=Ch?new Ch():undefined;
   try{await invoke('plugin:drag|start_drag',{item:paths,image:dragIconPath||paths[0],options:{mode:'copy'},onEvent});}
@@ -1198,7 +1209,13 @@ document.addEventListener('contextmenu',e=>{if(['INPUT','TEXTAREA'].includes(e.t
 
 function flash(msg){const d=document.createElement('div');d.textContent=msg;d.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:80;background:rgba(20,25,40,.88);color:#fff;padding:9px 16px;border-radius:11px;font-size:13px;backdrop-filter:blur(10px)';document.body.appendChild(d);setTimeout(()=>d.remove(),1400);}
 function renameByPath(p){const el=[...document.querySelectorAll('.card,.row')].find(x=>x.getAttribute('title')===p);if(!el)return;const nameEl=el.querySelector('.name,.nm');const ent=displayed.find(x=>x.path===p);if(nameEl&&ent)startRename(nameEl,ent);}
-async function reloadFolder(){const t=tab();if(searchMode&&t.search){return doSearch(t.search);}if(LIVE){try{t.list=await invoke('read_dir',{path:t.path});}catch(e){}}t.selSet=new Set();await render();}
+async function reloadFolder(){const t=tab();if(searchMode&&t.search){return doSearch(t.search);}if(LIVE){try{const nl=await invoke('read_dir',{path:t.path});diffInvalidate(t.list,nl);t.list=nl;}catch(e){}}
+  // Behoud de selectie voor bestanden die nog bestaan, zodat de preview na een
+  // handmatige verversing (F5) de bijgewerkte versie blijft tonen i.p.v. leeg te gaan.
+  const exist=new Set((t.list||[]).map(f=>f.path));
+  t.selSet=new Set([...(t.selSet||[])].filter(p=>exist.has(p)));
+  if(t.sel&&!exist.has(t.sel))t.sel=null;
+  await render();refreshPreviewSelection();}
 
 /* ===== Automatisch verversen (optioneel; standaard uit) ===== */
 let groupHeaders=LS('groupHeaders')!==false;   // Vandaag/Deze week/Eerder koppen (standaard aan)
@@ -1210,16 +1227,16 @@ async function autoRefreshTick(){
   if(dupView||appsViewActive||searchMode)return;                       // niet in speciale weergaven
   if(['INPUT','TEXTAREA'].includes(document.activeElement&&document.activeElement.tagName))return; // niet tijdens hernoemen/typen
   if(document.getElementById('ctxMenu'))return;                        // niet met open menu
-  let changed=false;
+  let changed=false,selChanged=false;const selPath=(tab().selSet&&tab().selSet.size===1)?[...tab().selSet][0]:null;
   for(const ix of panes){
     const t=tabs[ix];if(!t||!t.path||t.searching)continue;
     try{const list=await invoke('read_dir',{path:t.path});
       const sig=arSignature(list);
-      if(arSig[t.path]!==undefined&&arSig[t.path]!==sig){t.list=list;changed=true;}
+      if(arSig[t.path]!==undefined&&arSig[t.path]!==sig){const ch=diffInvalidate(t.list,list);if(selPath&&ch.has(selPath))selChanged=true;t.list=list;changed=true;}
       arSig[t.path]=sig;
     }catch(e){}
   }
-  if(changed)render();
+  if(changed){await render();if(selChanged)refreshPreviewSelection();}
 }
 function startAutoRefresh(){if(arTimer){clearInterval(arTimer);arTimer=null;}if(autoRefresh)arTimer=setInterval(autoRefreshTick,3000);}
 function setAutoRefresh(on){autoRefresh=on;SS('autoRefresh',on);
@@ -1529,6 +1546,17 @@ async function updatePreview(f){
     <div class="pmeta"><b>Type:</b> ${esc((f.ext||'').toUpperCase())||'—'}<br><b>Grootte:</b> ${fmtSize(f.size)||'—'}<br><b>Gewijzigd:</b> ${fmtDate(f.modified)}</div>
     <div class="ppath">${esc(f.path)}</div><button class="btn" id="pvOpen" style="margin-top:14px">Openen</button>`;
   const ob=document.getElementById('pvOpen');if(ob)ob.onclick=()=>openPath(f.path);
+}
+// Hertekent de preview op basis van het (verse) geselecteerde bestand. Wordt
+// aangeroepen na verversen, zodat een bewerkt+opgeslagen bestand meteen de
+// nieuwe versie laat zien (de assetUrl-cachebuster ?v=<modified> doet de rest).
+function refreshPreviewSelection(){
+  if(!previewEnabled)return;
+  const t=tab();
+  if(!t.selSet||t.selSet.size!==1){return;}
+  const p=[...t.selSet][0];
+  const f=(t.displayed||displayed||[]).find(x=>x.path===p)||(t.list||[]).find(x=>x.path===p);
+  if(f)updatePreview(f);
 }
 
 /* ===== Eigenschappen-venster ===== */
