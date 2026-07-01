@@ -545,10 +545,26 @@ async fn thumbnail(path: String, max: u32) -> Result<String, String> {
         }
 
         // 2) Terugval: zelf decoderen en verkleinen.
-        let img = image::open(&path).map_err(|e| e.to_string())?;
-        let thumb = img.thumbnail(edge, edge);
-        thumb.save(&out).map_err(|e| e.to_string())?;
-        Ok(out.to_string_lossy().to_string())
+        match image::open(&path) {
+            Ok(img) => {
+                let thumb = img.thumbnail(edge, edge);
+                thumb.save(&out).map_err(|e| e.to_string())?;
+                Ok(out.to_string_lossy().to_string())
+            }
+            // 3) Laatste redmiddel: laat Windows de thumbnail zelf uitpakken/
+            //    genereren (thumb_only=false). Dit werkt voor TIFF-varianten
+            //    (16-bit, CMYK, JPEG-compressie), HEIC, RAW enz. die de
+            //    image-crate niet kan decoderen, mits Windows er een codec voor heeft.
+            Err(dec_err) => {
+                #[cfg(all(windows, feature = "shellthumb"))]
+                {
+                    if shell_thumb_to_png(&path, edge, &out, false).is_ok() && out.exists() {
+                        return Ok(out.to_string_lossy().to_string());
+                    }
+                }
+                Err(dec_err.to_string())
+            }
+        }
     })
     .await
     .map_err(|e| e.to_string())?
@@ -908,8 +924,8 @@ async fn dir_size(path: String) -> u64 {
 #[tauri::command]
 fn folder_preview(path: String) -> Option<String> {
     let exts = [
-        "jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "ico", "mp4", "mov", "mkv", "avi",
-        "webm", "m4v", "wmv", "pdf",
+        "jpg", "jpeg", "jfif", "png", "gif", "webp", "avif", "bmp", "tiff", "tif", "heic", "heif",
+        "ico", "mp4", "mov", "mkv", "avi", "webm", "m4v", "wmv", "pdf",
     ];
     let rd = fs::read_dir(&path).ok()?;
     for e in rd.flatten() {

@@ -590,14 +590,14 @@ document.addEventListener('load',e=>{
   if(el.dataset.fb==='hide'){const g=el.previousElementSibling;if(g&&g.classList.contains('glyphbg'))g.style.display='none';}
 },true);
 
-const EXT_TYPE={jpg:'image',jpeg:'image',png:'image',gif:'image',webp:'image',bmp:'image',svg:'image',heic:'image',tiff:'image',ico:'image',
+const EXT_TYPE={jpg:'image',jpeg:'image',jfif:'image',png:'image',gif:'image',webp:'image',avif:'image',bmp:'image',svg:'image',heic:'image',heif:'image',tiff:'image',tif:'image',ico:'image',
  mp4:'video',mov:'video',mkv:'video',avi:'video',webm:'video',m4v:'video',wmv:'video',
  mp3:'audio',wav:'audio',flac:'audio',aac:'audio',ogg:'audio',m4a:'audio',
  pdf:'doc',doc:'doc',docx:'doc',txt:'doc',rtf:'doc',odt:'doc',xls:'doc',xlsx:'doc',xlsm:'doc',csv:'doc',ppt:'doc',pptx:'doc',md:'doc',pages:'doc',
  js:'code',ts:'code',jsx:'code',tsx:'code',html:'code',css:'code',py:'code',rs:'code',json:'code',java:'code',c:'code',cpp:'code',h:'code',go:'code',rb:'code',php:'code',sh:'code',sql:'code',
  zip:'archive',rar:'archive','7z':'archive',tar:'archive',gz:'archive',bz2:'archive',
  exe:'exe',msi:'exe'};
-const IMG_EXT=new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','ico']);
+const IMG_EXT=new Set(['jpg','jpeg','jfif','png','gif','webp','avif','bmp','tiff','tif','heic','heif','ico']);
 const VID_EXT=new Set(['mp4','mov','mkv','avi','webm','m4v','wmv']);
 const APP_EXT=new Set(['exe','msi']);
 function isVid(f){return VID_EXT.has((f.ext||'').toLowerCase());}
