@@ -1315,7 +1315,7 @@ async function runCtx(a){
     else if(a==='rename'){if(paths.length===1)renameByPath(paths[0]);}
     else if(a==='pasterename'){specialPasteRename();}
     else if(a==='delete'){if(!LIVE)return;await invoke('delete_paths',{paths});await reloadFolder();flash(paths.length+' naar prullenbak');}
-    else if(a==='localsend'){if(!LIVE)return;try{await invoke('localsend',{paths});flash('Geopend in LocalSend');}catch(e){alert('Kon LocalSend niet openen:\n\n'+e);}}
+    else if(a==='localsend'){if(!LIVE)return;try{await invoke('localsend',{paths});markSent(paths);flash('Geopend in LocalSend');}catch(e){alert('Kon LocalSend niet openen:\n\n'+e);}}
     else if(a==='newtab'){const d=ents.find(x=>x.isDir)||ents[0];if(d&&d.isDir){tabs.push(mkTab(d.path));panes=[tabs.length-1];activePane=0;applySplitClasses();renderTabs();navigate(d.path);}}
     else if(a==='location'){const p=paths[0];if(p){const par=parent(p);await navigate(par);const t2=tab();t2.selSet=new Set([p]);t2.sel=p;setTimeout(()=>{markSel();const el=[...document.querySelectorAll('.card,.row')].find(x=>x.getAttribute('title')===p);if(el)el.scrollIntoView({block:'center'});},80);}}
     else if(a==='copypath'){copyClip(paths.join('\r\n'));flash(paths.length>1?paths.length+' paden gekopieerd':'Pad gekopieerd');}
