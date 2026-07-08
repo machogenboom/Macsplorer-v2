@@ -226,6 +226,16 @@ body.dark .files{border-color:rgba(255,255,255,.12);box-shadow:var(--shadow),ins
 .row .tagdots{display:flex;gap:3px;margin:0 6px;flex-shrink:0}
 .tagdot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 1.5px rgba(255,255,255,.55)}
 body.dark .tagdot{box-shadow:0 0 0 1.5px rgba(0,0,0,.4)}
+/* Cloud-status (OneDrive/iCloud): alleen-online, gedownload of altijd bewaard. */
+.card .cloudst{position:absolute;top:7px;right:7px;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-size:10px;line-height:1;z-index:2;background:rgba(255,255,255,.9);box-shadow:0 1px 4px rgba(0,0,0,.28)}
+.row .cloudst{width:15px;height:15px;border-radius:50%;display:grid;place-items:center;font-size:9px;flex-shrink:0;margin:0 2px;background:rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+body.dark .card .cloudst,body.dark .row .cloudst{background:rgba(40,45,58,.95)}
+.cloudst.online{color:#409cff}.cloudst.local{color:#3aa564}
+.cloudst.pinned{color:#fff;background:#28c840;box-shadow:0 1px 4px rgba(40,200,64,.5)}
+/* LocalSend "verstuurd"-bolletje boven de preview (vervalt na 8 uur; klik = weg). */
+.card .sentb{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:10px;color:#fff;cursor:pointer;z-index:3;background:linear-gradient(135deg,#34c759,#2aa64c);box-shadow:0 1px 5px rgba(0,0,0,.35);transition:transform .12s}
+.card .sentb:hover{transform:translateX(-50%) scale(1.22)}
+.row .sentb{width:15px;height:15px;border-radius:50%;display:grid;place-items:center;font-size:9px;color:#fff;cursor:pointer;flex-shrink:0;margin:0 2px;background:linear-gradient(135deg,#34c759,#2aa64c)}
 .side-item .tcount{margin-left:auto;font-size:11px;color:var(--text-soft);flex-shrink:0}
 .ctxmenu .mi-tags{display:flex;gap:9px;padding:9px 12px;align-items:center;flex-wrap:wrap}
 .ctxmenu .mtag{width:19px;height:19px;border-radius:50%;cursor:pointer;display:grid;place-items:center;font-size:11px;color:#fff;transition:transform .12s;box-shadow:0 0 0 1.5px rgba(255,255,255,.4)}
@@ -669,6 +679,39 @@ function tagById(id){return tags.find(t=>t.id===id);}
 function toggleFileTag(path,id){const arr=fileTags[path]?fileTags[path].slice():[];const i=arr.indexOf(id);if(i>=0)arr.splice(i,1);else arr.push(id);if(arr.length)fileTags[path]=arr;else delete fileTags[path];SS('fileTags',fileTags);}
 function pathsWithTag(id){return Object.keys(fileTags).filter(p=>(fileTags[p]||[]).includes(id));}
 function tagDots(path){const ids=fileTags[path]||[];if(!ids.length)return '';return `<span class="tagdots">${ids.map(id=>{const tg=tagById(id);return tg?`<span class="tagdot" style="background:${esc(tg.color)}" title="${esc(tg.name)}"></span>`:'';}).join('')}</span>`;}
+
+/* ===== Cloud-status (OneDrive / iCloud / Google Drive) =====
+   Windows-bestandsattributen verraden of een cloud-bestand alleen online staat,
+   lokaal gedownload is, of "altijd bewaren" (pinned) is. */
+const CL_RECALL=0x400000;   // FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS -> alleen online
+const CL_PINNED=0x080000;   // FILE_ATTRIBUTE_PINNED -> altijd op deze pc bewaren
+function isCloudPath(p){return sourceOf(p)!=='systeem';}
+function cloudStatusOf(f){
+  const A=f.attrs||0;
+  if(A & CL_RECALL)return 'online';        // nog niet gedownload
+  if(isCloudPath(f.path))return (A & CL_PINNED)?'pinned':'local';
+  return '';                                // gewoon lokaal bestand -> geen badge
+}
+function cloudBadge(f){
+  const s=cloudStatusOf(f);if(!s)return '';
+  const ico=s==='online'?'☁':'✓';
+  const title=s==='online'?'Alleen online — dubbelklik of \'Altijd op deze pc bewaren\' om te downloaden'
+    :(s==='pinned'?'Altijd op deze pc bewaard':'Gedownload — lokaal beschikbaar');
+  return `<span class="cloudst ${s}" title="${title}">${ico}</span>`;
+}
+
+/* ===== LocalSend "verstuurd"-markering (bolletje boven de preview) =====
+   Na een geslaagde verzending onthouden we het pad + tijdstip. De markering
+   vervalt automatisch na 8 uur; klikken op het bolletje haalt hem direct weg. */
+const SENT_TTL=8*60*60*1000;   // 8 uur in ms
+let sentMarks=LS('sentMarks')||{};
+function pruneSent(){const now=Date.now();let ch=false;for(const p in sentMarks){if(now-sentMarks[p]>=SENT_TTL){delete sentMarks[p];ch=true;}}if(ch)SS('sentMarks',sentMarks);}
+pruneSent();
+function isSent(path){const t=sentMarks[path];return t&&(Date.now()-t<SENT_TTL);}
+function markSent(paths){const now=Date.now();(paths||[]).forEach(p=>sentMarks[p]=now);SS('sentMarks',sentMarks);if(typeof render==='function')render();}
+function clearSent(path){delete sentMarks[path];SS('sentMarks',sentMarks);}
+function sentBadge(path){return isSent(path)?`<span class="sentb" data-sent="${encodeURIComponent(path)}" title="Verstuurd via LocalSend — klik om te verbergen">✈</span>`:'';}
+
 let ALL_ROOTS=[], baseLocs=[];
 
 /* ===== Tabs ===== */
@@ -949,7 +992,7 @@ function cardHTML(T,f,i){
   else thumb=cardIcon(t,f.ext);
   const meta=f.isDir?(dirSizeCache.has(f.path)?`${fmtSize(dirSizeCache.get(f.path))} · ${fmtDate(f.modified)}`:`… · ${fmtDate(f.modified)}`):`${fmtSize(f.size)} · ${fmtDate(f.modified)}`;
   const selCls=T.selSet.has(f.path)?' sel':'';
-  return `<div class="card${selCls}" data-i="${i}" data-dir="${f.isDir?1:0}" title="${esc(f.path)}">${tagDots(f.path)}${thumb}<div class="name" data-act="rename">${esc(f.name)}</div><div class="meta" data-szp="${encodeURIComponent(f.path)}" data-mod="${f.modified}">${meta}</div></div>`;
+  return `<div class="card${selCls}" data-i="${i}" data-dir="${f.isDir?1:0}" title="${esc(f.path)}">${tagDots(f.path)}${cloudBadge(f)}${sentBadge(f.path)}${thumb}<div class="name" data-act="rename">${esc(f.name)}</div><div class="meta" data-szp="${encodeURIComponent(f.path)}" data-mod="${f.modified}">${meta}</div></div>`;
 }
 function renderGrid(T,area,list){
   T.displayed=list;
@@ -973,6 +1016,8 @@ function renderGrid(T,area,list){
     if(thumbEl)thumbEl.ondblclick=e=>{e.stopPropagation();focusPane(T);openEntry(f);};
     const nm=c.querySelector('.name');
     attachSlowRename(nm,f);
+    const sb=c.querySelector('.sentb');
+    if(sb)sb.onclick=e=>{e.stopPropagation();clearSent(decodeURIComponent(sb.dataset.sent));sb.remove();};
   });
   if(toAssetUrl&&imgObserver)area.querySelectorAll('.thumb.img').forEach(el=>imgObserver.observe(el));
   loadDirSizes(list);
@@ -989,7 +1034,7 @@ function rowHTML(T,f,depth,i){
   const meta=fmtDate(f.modified);
   const sz=f.isDir?(dirSizeCache.has(f.path)?fmtSize(dirSizeCache.get(f.path)):'…'):fmtSize(f.size);
   const selCls=T.selSet.has(f.path)?' sel':'';
-  return `<div class="row${selCls}" data-i="${i}" data-dir="${f.isDir?1:0}" style="margin-left:${depth*18}px" title="${esc(f.path)}">${disc}${tw}<span class="nm" data-act="rename">${esc(f.name)}</span>${tagDots(f.path)}<span class="mt">${meta}</span><span class="sz" data-szp="${encodeURIComponent(f.path)}">${sz}</span></div>`;
+  return `<div class="row${selCls}" data-i="${i}" data-dir="${f.isDir?1:0}" style="margin-left:${depth*18}px" title="${esc(f.path)}">${disc}${tw}<span class="nm" data-act="rename">${esc(f.name)}</span>${tagDots(f.path)}${cloudBadge(f)}${sentBadge(f.path)}<span class="mt">${meta}</span><span class="sz" data-szp="${encodeURIComponent(f.path)}">${sz}</span></div>`;
 }
 async function renderList(T,area,topList){
   const parts=[];T.displayed=[];
@@ -1020,6 +1065,8 @@ async function renderList(T,area,topList){
     const tw=rowEl.querySelector('.tw');if(tw)tw.ondblclick=e=>{e.stopPropagation();focusPane(T);openEntry(f);};
     const nm=rowEl.querySelector('.nm');
     attachSlowRename(nm,f);
+    const sb=rowEl.querySelector('.sentb');
+    if(sb)sb.onclick=e=>{e.stopPropagation();clearSent(decodeURIComponent(sb.dataset.sent));sb.remove();};
   });
   if(toAssetUrl&&imgObserver)area.querySelectorAll('.tw.img').forEach(el=>imgObserver.observe(el));
   loadDirSizes(T.displayed);
@@ -1082,6 +1129,7 @@ function showCtxMenu(x,y){
   const ents=selEntries(),paths=selPaths();
   const hasImg=ents.some(e=>!e.isDir&&typeOf(e)==='image');
   const hasDir=ents.some(e=>e.isDir),single=paths.length===1;
+  const inCloud=ents.some(e=>isCloudPath(e.path));
   const it=(ico,label,act,cls,key)=>`<div class="mi ${cls||''}" data-a="${act}"><span class="ico">${ico}</span>${label}${key?`<span class="k">${key}</span>`:''}</div>`;
   let h='';
   h+=it('↗︎','Openen','open','','Enter');
@@ -1105,6 +1153,7 @@ function showCtxMenu(x,y){
   h+=it('📋','Plak-hernoemen (klembord)','pasterename','','Ctrl+Alt+V');
   h+=it('✉️','Verzend met mail','mail');
   h+=it('📤','Versturen via LocalSend','localsend');
+  if(inCloud){h+='<div class="sepm"></div>';h+=it('⤓','Altijd op deze pc bewaren','pinkeep');h+=it('☁','Ruimte vrijmaken (alleen online)','unpin');}
   if(appsViewActive){h+='<div class="sepm"></div>';h+=it('🙈','Verbergen','hideapp');h+=it('👁','Weer tonen','unhideapp');}
   h+='<div class="sepm"></div>';
   h+=it('ⓘ','Eigenschappen','props','','Alt↵');
@@ -1133,7 +1182,7 @@ async function openLsSub(anchor,paths){
   if(!document.getElementById('lsSub'))return;
   if(!devices.length){sub.innerHTML='<div class="mi disabled"><span class="ico">🔌</span>Geen apparaten gevonden</div><div class="mi disabled" style="opacity:.6;font-size:11px">Open LocalSend op je telefoon/pc in hetzelfde netwerk</div>';return;}
   sub.innerHTML=devices.map((d,i)=>`<div class="mi lsdev" data-i="${i}"><span class="ico">${d.deviceType==='mobile'?'📱':'💻'}</span>${esc(d.alias)}</div>`).join('');
-  sub.querySelectorAll('.lsdev').forEach(el=>el.onclick=async ev=>{ev.stopPropagation();const d=devices[+el.dataset.i];el.innerHTML='<span class="ico">⏳</span>Versturen…';try{await invoke('localsend_send',{device:d,paths});hideCtxMenu();flash('Verstuurd via LocalSend');}catch(e){hideCtxMenu();alert('LocalSend versturen mislukt:\n'+e);}});
+  sub.querySelectorAll('.lsdev').forEach(el=>el.onclick=async ev=>{ev.stopPropagation();const d=devices[+el.dataset.i];el.innerHTML='<span class="ico">⏳</span>Versturen…';try{await invoke('localsend_send',{device:d,paths});markSent(paths);hideCtxMenu();flash('Verstuurd via LocalSend');}catch(e){hideCtxMenu();alert('LocalSend versturen mislukt:\n'+e);}});
 }
 document.addEventListener('click',hideCtxMenu);
 document.addEventListener('scroll',hideCtxMenu,true);
@@ -1277,6 +1326,8 @@ async function runCtx(a){
     else if(a==='hideapp'){paths.forEach(p=>{if(!hiddenApps.includes(p))hiddenApps.push(p);});SS('hiddenApps',hiddenApps);applyAppsList();flash(paths.length+' verborgen');}
     else if(a==='unhideapp'){hiddenApps=hiddenApps.filter(p=>!paths.includes(p));SS('hiddenApps',hiddenApps);applyAppsList();flash('Weer getoond');}
     else if(a==='unwrap'){if(!LIVE)return;let n=0;for(const e of ents){if(!e.isDir)continue;const par=parent(e.path);let kids=[];try{kids=await invoke('read_dir',{path:e.path});}catch(err){}const kp=kids.map(k=>k.path);if(kp.length)await invoke('move_paths',{paths:kp,destDir:par});await invoke('delete_paths',{paths:[e.path]});n++;}await reloadFolder();flash(n+' map(pen) uitgepakt');}
+    else if(a==='pinkeep'){if(!LIVE)return;try{await invoke('set_cloud_pin',{paths,pinned:true});flash('Wordt gedownload en op deze pc bewaard');setTimeout(reloadFolder,600);}catch(e){alert('Downloaden mislukt: '+e);}}
+    else if(a==='unpin'){if(!LIVE)return;try{await invoke('set_cloud_pin',{paths,pinned:false});flash('Ruimte vrijmaken — bestand blijft online beschikbaar');setTimeout(reloadFolder,600);}catch(e){alert('Vrijmaken mislukt: '+e);}}
   }catch(e){alert('Mislukt: '+e);}
 }
 function copyClip(text){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).catch(()=>fallbackCopy(text));}else fallbackCopy(text);}
@@ -1819,15 +1870,39 @@ function renderDisks(locs){
 }
 
 /* ===== Locaties laden ===== */
+// Signatuur van de aangesloten schijven/cloud (pad+naam+soort), zodat we kunnen
+// zien wanneer er een USB/schijf bij komt of verdwijnt — zónder de vrije ruimte
+// mee te tellen (die verandert continu).
+function driveSig(locs){return locs.filter(l=>l.kind==='drive'||l.kind==='cloud').map(l=>l.kind+'|'+l.path+'|'+l.name).join('¦');}
+let lastDriveSig='';
+function applyLocations(locs){
+  baseLocs=locs;ALL_ROOTS=locs.filter(l=>l.kind==='drive'||l.kind==='cloud').map(l=>l.path);
+  lastDriveSig=driveSig(locs);
+  renderDisks(locs);renderNav();
+  document.getElementById('modeNote').textContent=LIVE?'Verbonden met je bestanden':'Voorbeeldmodus (browser)';
+}
 async function loadLocations(){
   let locs;
   if(LIVE){try{locs=await invoke('list_locations');}catch(e){locs=[];}}else locs=SAMPLE_LOCS;
-  baseLocs=locs;ALL_ROOTS=locs.filter(l=>l.kind==='drive'||l.kind==='cloud').map(l=>l.path);
-  renderDisks(locs);renderNav();
-  document.getElementById('modeNote').textContent=LIVE?'Verbonden met je bestanden':'Voorbeeldmodus (browser)';
+  applyLocations(locs);
   const first=locs.find(l=>l.kind==='fav')||locs[0];
   if(first)navigate(first.path);else render();
 }
+// Houdt de zijbalk actueel: verschijnt/verdwijnt er een schijf of USB-stick, dan
+// werken we de schijven- en cloudlijst bij (zonder van map te wisselen).
+async function watchDrivesTick(){
+  if(!LIVE)return;
+  let locs;try{locs=await invoke('list_locations');}catch(e){return;}
+  if(driveSig(locs)!==lastDriveSig){
+    applyLocations(locs);
+    flash('Schijvenlijst bijgewerkt');
+  }else{
+    // Alleen de vrije-ruimte-balkjes verversen (goedkoop), zonder herteken-flikker
+    // in de navigatie.
+    baseLocs=locs;renderDisks(locs);
+  }
+}
+setInterval(watchDrivesTick,4000);
 
 /* ===== Apps ===== */
 let appsCache=null,appsViewActive=false,showHiddenApps=false;

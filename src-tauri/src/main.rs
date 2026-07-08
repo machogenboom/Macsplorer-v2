@@ -22,6 +22,10 @@ struct Entry {
     modified: u64, // ms sinds epoch
     created: u64,  // ms sinds epoch
     ext: String,
+    // Windows-bestandsattributen (DWORD). Bevat o.a. de cloud-vlaggen
+    // (RECALL_ON_DATA_ACCESS = alleen-online, PINNED = altijd bewaren) waarmee
+    // de frontend een status-badge op OneDrive/iCloud-bestanden toont. 0 elders.
+    attrs: u32,
 }
 
 #[derive(Serialize, Clone)]
@@ -74,6 +78,13 @@ fn to_entry(path: &Path) -> Option<Entry> {
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
+    #[cfg(windows)]
+    let attrs = {
+        use std::os::windows::fs::MetadataExt;
+        md.file_attributes()
+    };
+    #[cfg(not(windows))]
+    let attrs = 0u32;
     Some(Entry {
         name,
         path: path.to_string_lossy().to_string(),
@@ -82,6 +93,7 @@ fn to_entry(path: &Path) -> Option<Entry> {
         modified,
         created,
         ext,
+        attrs,
     })
 }
 
@@ -349,10 +361,93 @@ fn pick_excel() -> Option<String> {
         .map(|p| p.to_string_lossy().to_string())
 }
 
+/// Verwijdert het "Mark of the Web" (de `Zone.Identifier`-alternate-data-stream)
+/// van een bestand. Windows zet dit merk op bestanden die van internet of via het
+/// netwerk (o.a. LocalSend, downloads) binnenkomen; daardoor verschijnt bij het
+/// openen de melding "Wilt u dit bestand echt openen?" (SmartScreen/Open File -
+/// Security Warning). Dit is precies wat de rechtsklik → Eigenschappen →
+/// "Blokkering opheffen" doet. Fouten worden genegeerd (stream bestaat vaak niet).
+#[cfg(windows)]
+fn clear_mark_of_the_web(path: &str) {
+    // Een ADS wordt aangesproken als "pad:streamnaam". Het verwijderen van deze
+    // stream haalt alleen het merk weg; de bestandsinhoud blijft ongemoeid.
+    let stream = format!("{path}:Zone.Identifier");
+    let _ = fs::remove_file(&stream);
+}
+
 /// Bestand openen met de standaard-app (snel, via ShellExecute op Windows).
 #[tauri::command]
 fn open_path(path: String) -> Result<(), String> {
+    #[cfg(windows)]
+    clear_mark_of_the_web(&path);
     open::that_detached(&path).map_err(|e| e.to_string())
+}
+
+/// Zet ("altijd op deze pc bewaren") of haalt ("ruimte vrijmaken") de download-pin
+/// van OneDrive/iCloud/Google-Drive-bestanden. Werkt via de cloud-attributen
+/// FILE_ATTRIBUTE_PINNED (0x00080000) en FILE_ATTRIBUTE_UNPINNED (0x00100000):
+/// PINNED zetten laat de sync-engine het bestand downloaden én lokaal houden.
+/// Voor mappen wordt de hele inhoud recursief meegenomen, zodat alles binnenkomt.
+#[cfg(windows)]
+#[tauri::command]
+fn set_cloud_pin(paths: Vec<String>, pinned: bool) -> Result<(), String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{
+        GetFileAttributesW, SetFileAttributesW, FILE_FLAGS_AND_ATTRIBUTES,
+        INVALID_FILE_ATTRIBUTES,
+    };
+    const PINNED: u32 = 0x0008_0000;
+    const UNPINNED: u32 = 0x0010_0000;
+
+    fn apply(p: &Path, pinned: bool) {
+        use std::os::windows::ffi::OsStrExt;
+        let w: Vec<u16> = p
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        unsafe {
+            let cur = GetFileAttributesW(PCWSTR(w.as_ptr()));
+            if cur == INVALID_FILE_ATTRIBUTES {
+                return;
+            }
+            let mut a = cur;
+            if pinned {
+                a |= PINNED;
+                a &= !UNPINNED;
+            } else {
+                a |= UNPINNED;
+                a &= !PINNED;
+            }
+            let _ = SetFileAttributesW(PCWSTR(w.as_ptr()), FILE_FLAGS_AND_ATTRIBUTES(a));
+        }
+    }
+
+    for p in &paths {
+        let path = Path::new(p);
+        apply(path, pinned);
+        if path.is_dir() {
+            // Recursief: elk bestand en submap krijgt dezelfde pin, zodat de hele
+            // map daadwerkelijk gedownload/vrijgemaakt wordt.
+            for de in WalkBuilder::new(path)
+                .hidden(false)
+                .ignore(false)
+                .git_ignore(false)
+                .git_global(false)
+                .git_exclude(false)
+                .build()
+                .flatten()
+            {
+                apply(de.path(), pinned);
+            }
+        }
+    }
+    Ok(())
+}
+#[cfg(not(windows))]
+#[tauri::command]
+fn set_cloud_pin(_paths: Vec<String>, _pinned: bool) -> Result<(), String> {
+    Err("Alleen op Windows".into())
 }
 
 /// Valideert een losse bestands-/mapnaam (geen pad). Weigert padscheidings-
@@ -1997,6 +2092,7 @@ fn main() {
             copy_image,
             clipboard_text,
             shell_drag,
+            set_cloud_pin,
             update_app
         ])
         .run(tauri::generate_context!())
