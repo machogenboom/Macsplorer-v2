@@ -139,7 +139,7 @@ body.resizing *{transition:none !important}
 .pane-head .ph-tab.active{background:rgba(var(--accent),.95);border-color:transparent;color:#fff;font-weight:600;box-shadow:0 5px 14px -5px rgba(var(--accent),.85)}
 .pane-head .ph-ic{flex-shrink:0}
 .pane-head .ph-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pane-head .ph-orient{margin-left:auto}
+.pane-head .ph-swap{margin-left:auto}
 .pane-head .ph-btn,.pane-head .ph-close{flex-shrink:0;width:28px;height:28px;border:1px solid rgba(var(--stroke),.45);background:rgba(var(--panel),.78);color:var(--text);cursor:pointer;border-radius:8px;line-height:1;display:grid;place-items:center;font-size:13px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 .pane-head .ph-btn:hover{background:rgba(var(--accent),.9);color:#fff;border-color:transparent}
 .pane-head .ph-close:hover{background:#ff453a;color:#fff;border-color:transparent}
@@ -269,6 +269,11 @@ body.dark .card .cloudst,body.dark .row .cloudst{background:rgba(40,45,58,.95)}
 .thumb.img{position:relative;width:100%;aspect-ratio:1;border-radius:10px;overflow:hidden;background:rgba(var(--panel),.35);display:grid;place-items:center}
 .thumb.img img{max-width:100%;max-height:100%;object-fit:contain;display:block}
 .thumb.img.vid::after{content:'▶';position:absolute;inset:0;display:grid;place-items:center;font-size:20px;color:rgba(255,255,255,.92);text-shadow:0 2px 8px rgba(0,0,0,.65);pointer-events:none}
+/* Snelkoppeling-badge: klein pijltje linksonder op het icoon (blijft staan, ook
+   nadat showThumb de icoon-inhoud vervangt, want ::after is geen DOM-kind). */
+.thumb.short,.tw.short{position:relative}
+.thumb.short::after,.tw.short::after{content:'';position:absolute;left:6%;bottom:6%;width:36%;max-width:22px;aspect-ratio:1;border-radius:5px;background:#fff url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%231a1a1a'%20stroke-width='3'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M8%2016L16%208'/%3E%3Cpath%20d='M10%208h6v6'/%3E%3C/svg%3E") center/62% no-repeat;box-shadow:0 1px 3px rgba(0,0,0,.45);z-index:4;pointer-events:none}
+.tw.short::after{left:0;bottom:0;width:14px;max-width:14px;border-radius:4px}
 .thumb.img.pending{background-image:linear-gradient(110deg,rgba(var(--panel),.3) 30%,rgba(var(--panel),.55) 50%,rgba(var(--panel),.3) 70%);background-size:200% 100%;animation:shimmer 1.1s infinite}
 @keyframes shimmer{to{background-position:-200% 0}}
 .card .name{font-size:13px;font-weight:550;line-height:1.25;word-break:break-word;cursor:text;padding:1px 3px;border-radius:5px;
@@ -610,8 +615,10 @@ const EXT_TYPE={jpg:'image',jpeg:'image',jfif:'image',png:'image',gif:'image',we
 const IMG_EXT=new Set(['jpg','jpeg','jfif','png','gif','webp','avif','bmp','tiff','tif','heic','heif','ico']);
 const VID_EXT=new Set(['mp4','mov','mkv','avi','webm','m4v','wmv']);
 const APP_EXT=new Set(['exe','msi']);
+const SHORTCUT_EXT=new Set(['lnk','url']);   // Windows-snelkoppelingen
 function isVid(f){return VID_EXT.has((f.ext||'').toLowerCase());}
 function isApp(f){return !f.isDir&&APP_EXT.has((f.ext||'').toLowerCase());}
+function isShortcut(f){return !f.isDir&&SHORTCUT_EXT.has((f.ext||'').toLowerCase());}
 function canThumb(f){if(f.isDir||!toAssetUrl)return false;const e=(f.ext||'').toLowerCase();return IMG_EXT.has(e)||VID_EXT.has(e)||e==='pdf'||e==='svg';}
 function typeOf(e){return e.isDir?'folder':(EXT_TYPE[(e.ext||'').toLowerCase()]||'doc');}
 function sourceOf(p){const s=(p||'').toLowerCase();if(s.includes('onedrive'))return 'onedrive';if(s.includes('google drive')||s.includes(SEP+'my drive'))return 'gdrive';if(s.includes('icloud'))return 'icloud';return 'systeem';}
@@ -642,8 +649,8 @@ function iconHTML(t,ext){
   const png=ICON_PNG[t]||'bestand.png';
   const label=(png==='bestand.png'&&ext)?`<span class="extlbl">${esc(String(ext).toUpperCase().slice(0,4))}</span>`:'';
   return `<div class="glyphbg" style="color:${TYPE_COLOR[t]||'#90a0b8'}">${glyphSVG(t)}</div><img class="pngicon" src="assets/icons/${png}" alt="" data-fb="hide">${label}`;}
-function cardIcon(t,ext){return `<div class="thumb iconwrap">${iconHTML(t,ext)}</div>`;}
-function smallIcon(t,ext){return `<div class="tw iconwrap">${iconHTML(t,ext)}</div>`;}
+function cardIcon(t,ext,extra){return `<div class="thumb iconwrap${extra||''}">${iconHTML(t,ext)}</div>`;}
+function smallIcon(t,ext,extra){return `<div class="tw iconwrap${extra||''}">${iconHTML(t,ext)}</div>`;}
 function sideIconHTML(it){
   if(favIcons[it.path]&&toAssetUrl){return `<span class="ic"><img class="sideimg" src="${esc(toAssetUrl(favIcons[it.path]))}" alt="" data-fb="emoji" data-emoji="📁"></span>`;}
   const n=(it.name||'').toLowerCase();let png='folder.png',emoji='📁';
@@ -739,8 +746,9 @@ function updatePaneHeads(){
     const head=document.getElementById('paneHead'+pi);if(!head)return;
     if(!split||pi>=panes.length){head.innerHTML='';return;}
     const t=tabs[panes[pi]];if(!t){head.innerHTML='';return;}
-    head.innerHTML=`<div class="ph-tab${pi===activePane?' active':''}"><span class="ph-ic">${pi===activePane?'📂':'📁'}</span><span class="ph-name">${esc(t.title||'Start')}</span><button class="ph-btn ph-orient" title="${splitDir==='h'?'Naast elkaar zetten':'Onder elkaar zetten'}">${splitDir==='h'?'⬌':'⬍'}</button><button class="ph-close" title="Deze helft sluiten">✕</button></div>`;
+    head.innerHTML=`<div class="ph-tab${pi===activePane?' active':''}"><span class="ph-ic">${pi===activePane?'📂':'📁'}</span><span class="ph-name">${esc(t.title||'Start')}</span><button class="ph-btn ph-swap" title="${splitDir==='h'?'Boven/onder verwisselen':'Links/rechts verwisselen'}">⇄</button><button class="ph-btn ph-orient" title="${splitDir==='h'?'Naast elkaar zetten':'Onder elkaar zetten'}">${splitDir==='h'?'⬌':'⬍'}</button><button class="ph-close" title="Deze helft sluiten">✕</button></div>`;
     head.querySelector('.ph-tab').onclick=()=>{focusPane(tabs[panes[pi]]);};
+    head.querySelector('.ph-swap').onclick=e=>{e.stopPropagation();swapPanes();};
     head.querySelector('.ph-orient').onclick=e=>{e.stopPropagation();toggleSplitDir();};
     head.querySelector('.ph-close').onclick=e=>{e.stopPropagation();closePane(pi);};
   });
@@ -791,6 +799,8 @@ function renderTabs(){
         const c=document.createElement('button');c.className='tc';c.textContent='✕';
         c.onclick=e=>{e.stopPropagation();closeGroup(t.groupId);};d.appendChild(c);
         d.onclick=()=>{if(suppressClick){suppressClick=false;return;}activateGroup(t.groupId);};
+        d._unit={group:t.groupId,tabs:idx.map(ix=>tabs[ix])};
+        enableTabDrag(d);
         tb.appendChild(d);
         return;
       }
@@ -803,7 +813,8 @@ function renderTabs(){
     d.innerHTML=`<span class="tn">${esc(t.title||'Start')}</span>`;
     if(tabs.length>1){const c=document.createElement('button');c.className='tc';c.textContent='✕';c.onclick=e=>{e.stopPropagation();closeTab(i);};d.appendChild(c);}
     d.onclick=()=>{if(suppressClick){suppressClick=false;return;}panes=[i];activePane=0;applySplitClasses();syncFromTab();};
-    enableTabDrag(d,i);
+    d._unit={tabs:[t]};
+    enableTabDrag(d);
     tb.appendChild(d);
   });
   const add=document.createElement('button');add.className='tab-add';add.textContent='+';add.onclick=newTab;
@@ -811,22 +822,68 @@ function renderTabs(){
 }
 let splitDir=LS('splitDir')||'v';   // 'v' = naast elkaar, 'h' = onder elkaar
 function applySplitClasses(){const m=document.querySelector('.main');const on=panes.length>1;m.classList.toggle('split',on);m.classList.toggle('split-h',on&&splitDir==='h');}
-function enableTabDrag(el,i){
+// Sleep een tab-chip: binnen de tabbalk = van positie wisselen (herschikken);
+// omlaag/opzij de bestandszone in = split screen aanmaken.
+function enableTabDrag(el){
   el.addEventListener('mousedown',e=>{
     if(e.button!==0||e.target.closest('.tc'))return;
     e.preventDefault();
-    const sx=e.clientX,sy=e.clientY,main=document.querySelector('.main');let dragging=false;
+    const sx=e.clientX,sy=e.clientY,main=document.querySelector('.main');
+    const tb=document.getElementById('tabbar');
+    const canSplit=!el.classList.contains('tab-group')&&tabs.length>=2;
+    let dragging=false,mode=null;
     // Sleep naar de rechterhelft = naast elkaar ('v'); naar de onderkant = onder elkaar ('h').
-    const zone=ev=>{if(tabs.length<2)return null;
+    const splitZone=ev=>{if(!canSplit)return null;
       const fr=document.getElementById('filesrow').getBoundingClientRect();
       const fx=(ev.clientX-fr.left)/fr.width, fy=(ev.clientY-fr.top)/fr.height;
       if(fy<0.04||fx<0||fx>1)return null;   // boven of naast de bestandszone: geen split
       // Meer naar beneden = onder elkaar ('h'); meer naar rechts = naast elkaar ('v').
       return fy>fx ? 'h' : 'v';};
-    const move=ev=>{if(!dragging){if(Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)<6)return;dragging=true;el.classList.add('tabdrag');}const z=zone(ev);main.classList.toggle('split-hint',z==='v');main.classList.toggle('split-hint-h',z==='h');};
-    const up=ev=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);el.classList.remove('tabdrag');main.classList.remove('split-hint','split-hint-h');const z=dragging?zone(ev):null;if(z){splitDir=z;SS('splitDir',splitDir);suppressClick=true;enterSplit(i);}};
+    // Verplaats de gesleepte chip live tussen de andere chips (visuele feedback).
+    const reorderTo=x=>{
+      const chips=[...tb.querySelectorAll('.tab')].filter(c=>c!==el);
+      let before=null;
+      for(const c of chips){const r=c.getBoundingClientRect();if(x<r.left+r.width/2){before=c;break;}}
+      if(before)tb.insertBefore(el,before); else tb.insertBefore(el,tb.querySelector('.tab-add'));
+    };
+    const move=ev=>{
+      if(!dragging){if(Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)<6)return;dragging=true;el.classList.add('tabdrag');}
+      const z=splitZone(ev);
+      if(z){mode='split';main.classList.toggle('split-hint',z==='v');main.classList.toggle('split-hint-h',z==='h');}
+      else{mode='reorder';main.classList.remove('split-hint','split-hint-h');reorderTo(ev.clientX);}
+    };
+    const up=ev=>{
+      document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
+      el.classList.remove('tabdrag');main.classList.remove('split-hint','split-hint-h');
+      if(!dragging)return;
+      if(mode==='split'){const z=splitZone(ev);if(z){splitDir=z;SS('splitDir',splitDir);suppressClick=true;enterSplit(tabs.indexOf(el._unit.tabs[0]));return;}}
+      if(mode==='reorder'){suppressClick=true;commitTabOrder();}
+    };
     document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
   });
+}
+// Neem de nieuwe DOM-volgorde van de tab-chips over in het tabs-model.
+function commitTabOrder(){
+  const tb=document.getElementById('tabbar');
+  const order=[...tb.querySelectorAll('.tab')].map(c=>c._unit).filter(Boolean);
+  const paneTabs=panes.map(ix=>tabs[ix]);
+  const seen=new Set(),next=[];
+  order.forEach(u=>u.tabs.forEach(t=>{if(!seen.has(t.id)){seen.add(t.id);next.push(t);}}));
+  tabs.forEach(t=>{if(!seen.has(t.id)){seen.add(t.id);next.push(t);}}); // vangnet
+  tabs=next;
+  panes=paneTabs.map(t=>tabs.indexOf(t)).filter(ix=>ix>=0);
+  if(!panes.length)panes=[0];
+  activePane=Math.min(activePane,panes.length-1);
+  syncFromTab();
+}
+// Wissel in split screen welke helft boven/links en onder/rechts staat.
+function swapPanes(){
+  if(panes.length<2)return;
+  panes=[panes[1],panes[0]];
+  activePane=1-activePane;
+  const a=tabs[panes[0]],b=tabs[panes[1]];
+  if(a&&b&&a.groupId&&a.groupId===b.groupId){a.groupPos=0;b.groupPos=1;}
+  applySplitClasses();syncFromTab();
 }
 let suppressClick=false;
 function enterSplit(rightIdx){
@@ -899,8 +956,9 @@ const imgObserver=('IntersectionObserver'in window)?new IntersectionObserver((en
 async function loadAppIcon(el){
   const path=decodeURIComponent(el.dataset.app||'');if(!path||!toAssetUrl)return;
   const cover=el.dataset.cover==='1';
+  const sc=el.classList.contains('short');const ico=sc?'doc':'exe';const scCls=sc?' short':'';
   try{const tp=await invoke('app_icon',{path,max:256});showThumb(el,toAssetUrl(tp),cover);}
-  catch(e){el.classList.remove('pending');el.outerHTML=cover?smallIcon('exe'):cardIcon('exe');}
+  catch(e){el.classList.remove('pending');el.outerHTML=cover?smallIcon(ico,null,scCls):cardIcon(ico,null,scCls);}
 }
 async function loadFolderPrev(el){
   const path=decodeURIComponent(el.dataset.folder||'');if(!path||!toAssetUrl)return;
@@ -985,11 +1043,14 @@ function updateSizeDOM(path,size){
 
 function cardHTML(T,f,i){
   const t=typeOf(f);
+  const sc=isShortcut(f)?' short':'';
   let thumb;
   if(f.isDir&&toAssetUrl)thumb=`<div class="thumb img pending folderprev" data-folder="${encodeURIComponent(f.path)}"></div>`;
   else if(canThumb(f))thumb=`<div class="thumb img pending${isVid(f)?' vid':''}" data-img="${encodeURIComponent(f.path)}"></div>`;
-  else if(isApp(f)&&toAssetUrl)thumb=`<div class="thumb img pending appicon" data-app="${encodeURIComponent(f.path)}"></div>`;
-  else thumb=cardIcon(t,f.ext);
+  // Snelkoppelingen (.lnk/.url) laten we door de Windows-shell tekenen: die geeft
+  // het icoon van het doel waar de snelkoppeling naar wijst.
+  else if((isApp(f)||isShortcut(f))&&toAssetUrl)thumb=`<div class="thumb img pending appicon${sc}" data-app="${encodeURIComponent(f.path)}"></div>`;
+  else thumb=cardIcon(t,f.ext,sc);
   const meta=f.isDir?(dirSizeCache.has(f.path)?`${fmtSize(dirSizeCache.get(f.path))} · ${fmtDate(f.modified)}`:`… · ${fmtDate(f.modified)}`):`${fmtSize(f.size)} · ${fmtDate(f.modified)}`;
   const selCls=T.selSet.has(f.path)?' sel':'';
   return `<div class="card${selCls}" data-i="${i}" data-dir="${f.isDir?1:0}" title="${esc(f.path)}">${tagDots(f.path)}${cloudBadge(f)}${sentBadge(f.path)}${thumb}<div class="name" data-act="rename">${esc(f.name)}</div><div class="meta" data-szp="${encodeURIComponent(f.path)}" data-mod="${f.modified}">${meta}</div></div>`;
@@ -1026,11 +1087,12 @@ function renderGrid(T,area,list){
 function rowHTML(T,f,depth,i){
   const t2=typeOf(f);
   const disc=f.isDir?`<span class="disc${T.expanded.has(f.path)?' open':''}" data-act="disc">▸</span>`:'<span class="disc" style="visibility:hidden">▸</span>';
+  const sc=isShortcut(f)?' short':'';
   let tw;
   if(f.isDir&&toAssetUrl)tw=`<div class="tw img pending folderprev" data-cover="1" data-folder="${encodeURIComponent(f.path)}"></div>`;
   else if(canThumb(f))tw=`<div class="tw img pending" data-cover="1" data-img="${encodeURIComponent(f.path)}"></div>`;
-  else if(isApp(f)&&toAssetUrl)tw=`<div class="tw img pending appicon" data-cover="1" data-app="${encodeURIComponent(f.path)}"></div>`;
-  else tw=smallIcon(t2,f.ext);
+  else if((isApp(f)||isShortcut(f))&&toAssetUrl)tw=`<div class="tw img pending appicon${sc}" data-cover="1" data-app="${encodeURIComponent(f.path)}"></div>`;
+  else tw=smallIcon(t2,f.ext,sc);
   const meta=fmtDate(f.modified);
   const sz=f.isDir?(dirSizeCache.has(f.path)?fmtSize(dirSizeCache.get(f.path)):'…'):fmtSize(f.size);
   const selCls=T.selSet.has(f.path)?' sel':'';
