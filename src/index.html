@@ -430,6 +430,15 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
 .ctxmenu .sepm{height:1px;background:rgba(var(--stroke),.4);margin:5px 8px}
 .ctxmenu .mi.has-sub::after{content:'▸';margin-left:auto;opacity:.55;padding-left:8px}
 .ctxmenu.lssub{min-width:200px}
+.msdot{width:9px;height:9px;border-radius:50%;margin-left:auto;flex-shrink:0;background:rgba(128,128,128,.45)}
+.msdot.on{background:#30d158;box-shadow:0 0 6px rgba(48,209,88,.7)}
+.mspeer{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font-size:13px}
+.mspeer .msdot{margin-left:0}
+.mspeer .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mspeer .star{cursor:pointer;opacity:.4;transition:opacity .12s,transform .12s}
+.mspeer .star:hover{transform:scale(1.25)}
+.mspeer .star.on{opacity:1}
+.mspeer .qbadge{font-size:11px;opacity:.65}
 .ctxmenu .ico{width:17px;text-align:center;flex-shrink:0}
 </style>
 </head>
@@ -563,6 +572,18 @@ body.dark .ctxmenu{border-color:rgba(255,255,255,.12)}
     <summary class="sec">⌨️ Sneltoetsen</summary>
     <div class="field"><div id="shortcutList"></div><button class="btn ghost" id="resetShortcuts" style="margin-top:10px">Standaard herstellen</button>
       <div class="hint">Klik op een combinatie en druk daarna de gewenste toetsen in. Esc annuleert. Werkt onafhankelijk van toetsenbordindeling.</div></div>
+  </details>
+  <details class="sec-group" data-k="msend">
+    <summary class="sec">📡 Versturen (LAN)</summary>
+    <div class="field"><label>LocalSend-functies</label><div class="seg" id="msendSeg"><button data-ms="1">Aan</button><button data-ms="0" class="on">Uit</button></div>
+      <div class="hint">Aan = deze computer is zichtbaar voor andere Macsplorer-gebruikers in je netwerk en je kunt met rechtermuisklik → <b>Versturen naar computer</b> bestanden sturen. Alleen Macsplorer-computers zien elkaar; andere apps zien deze verbindingen niet.</div></div>
+    <div class="field"><label>Naam van deze computer</label><input class="repo-in" id="msendName" placeholder="bijv. Mac — Werk-pc" spellcheck="false" maxlength="40">
+      <div class="hint">Onder deze naam ben je zichtbaar op andere computers.</div></div>
+    <div class="field"><label>Ontvangstmap</label><div class="pathlist" id="msendRecv"></div><button class="btn" id="msendPickRecv">📁 Map kiezen</button>
+      <div class="hint">Bestanden die anderen naar jou sturen komen hier terecht.</div></div>
+    <div class="field"><label>Computers &amp; favorieten</label><div id="msendPeers" class="pathlist"></div>
+      <div class="hint">⭐ Favorieten blijven altijd in de lijst staan — ook offline. Stuur je iets naar een offline computer, dan komt het in de wachtrij en wordt het automatisch verstuurd zodra hij weer online is.</div></div>
+    <div class="field" id="msendQueueField" style="display:none"><label>Wachtrij</label><div id="msendQueue" class="pathlist"></div></div>
   </details>
   <details class="sec-group" data-k="updates">
     <summary class="sec">⬇️ Updates (GitHub)</summary>
@@ -1214,7 +1235,10 @@ function showCtxMenu(x,y){
   h+=it('✏️','Hernoemen','rename',single?'':'disabled','F2');
   h+=it('📋','Plak-hernoemen (klembord)','pasterename','','Ctrl+Alt+V');
   h+=it('✉️','Verzend met mail','mail');
-  h+=it('📤','Versturen via LocalSend','localsend');
+  if(msendCfg.enabled){
+    h+=`<div class="mi has-sub" data-a="msend"><span class="ico">📡</span>Versturen naar computer</div>`;
+    h+=it('📤','Versturen via LocalSend','localsend');
+  }
   if(inCloud){h+='<div class="sepm"></div>';h+=it('⤓','Altijd op deze pc bewaren','pinkeep');h+=it('☁','Ruimte vrijmaken (alleen online)','unpin');}
   if(appsViewActive){h+='<div class="sepm"></div>';h+=it('🙈','Verbergen','hideapp');h+=it('👁','Weer tonen','unhideapp');}
   h+='<div class="sepm"></div>';
@@ -1228,7 +1252,10 @@ function showCtxMenu(x,y){
   m.style.left=Math.min(x,innerWidth-r.width-8)+'px';
   m.style.top=Math.min(y,innerHeight-r.height-8)+'px';
   m.querySelectorAll('.mi').forEach(mi=>{
-    mi.onclick=()=>{const a=mi.dataset.a;hideCtxMenu();runCtx(a);};
+    const a=mi.dataset.a;
+    if(a==='msend'){mi.onclick=ev=>{ev.stopPropagation();openMsendSub(mi,paths);};mi.onmouseenter=()=>openMsendSub(mi,paths);return;}
+    mi.onmouseenter=()=>{const s=document.getElementById('lsSub');if(s)s.remove();};
+    mi.onclick=()=>{hideCtxMenu();runCtx(a);};
   });
   m.querySelectorAll('.mtag').forEach(d=>d.onclick=ev=>{ev.stopPropagation();const id=d.dataset.tag,paths=selPaths();if(id){paths.forEach(p=>toggleFileTag(p,id));}else{paths.forEach(p=>delete fileTags[p]);SS('fileTags',fileTags);}hideCtxMenu();render();renderTagSidebar();});
 }
@@ -1249,6 +1276,86 @@ async function openLsSub(anchor,paths){
 document.addEventListener('click',hideCtxMenu);
 document.addEventListener('scroll',hideCtxMenu,true);
 window.addEventListener('blur',hideCtxMenu);
+
+/* ===== Macsplorer Send (eigen LAN-verzenden tussen Macsplorer-computers) =====
+   De backend houdt continu (lichtgewicht, 1 UDP-pakketje per 30 s) bij welke
+   Macsplorer-computers online zijn. Het submenu leest die lijst direct uit het
+   geheugen — geen wachttijd zoals bij de LocalSend-discovery. */
+let msendCfg={enabled:false,name:'',recvDir:'',favorites:[],queue:[]};
+async function msendLoad(){if(!LIVE)return;try{msendCfg=await invoke('msend_get_settings');}catch(e){}renderMsendSettings();}
+async function msendApply(){if(!LIVE)return;try{await invoke('msend_set_settings',{enabled:!!msendCfg.enabled,name:msendCfg.name||'',recvDir:msendCfg.recvDir||''});}catch(e){alert('Instellingen opslaan mislukt: '+e);}await msendLoad();}
+function msendPeerRow(d){
+  return `<div class="mspeer" data-id="${esc(d.id)}"><span class="msdot ${d.online?'on':'off'}" title="${d.online?'Online':'Offline'}"></span><span class="nm">${esc(d.name)}</span>${d.queued?`<span class="qbadge" title="Items in wachtrij">🕓 ${d.queued}</span>`:''}<span class="star ${d.favorite?'on':''}" title="${d.favorite?'Favoriet — klik om te verwijderen':'Als favoriet vastzetten'}">⭐</span></div>`;
+}
+async function refreshMsendPeers(){
+  const box=document.getElementById('msendPeers');if(!box||!LIVE)return;
+  if(!msendCfg.enabled){box.innerHTML='<div class="hint" style="margin:0">Zet de functie aan om computers te zien.</div>';return;}
+  let peers=[];try{peers=await invoke('msend_peers');}catch(e){}
+  box.innerHTML=peers.length?peers.map(msendPeerRow).join(''):'<div class="hint" style="margin:0">Nog geen computers gevonden — zet Macsplorer (met Versturen aan) op een andere pc in dit netwerk aan.</div>';
+  box.querySelectorAll('.mspeer .star').forEach(st=>st.onclick=async()=>{
+    const row=st.closest('.mspeer'),id=row.dataset.id;const d=peers.find(p=>p.id===id);if(!d)return;
+    try{await invoke('msend_set_favorite',{id,name:d.name,favorite:!d.favorite});}catch(e){}
+    await msendLoad();
+  });
+}
+function renderMsendQueue(){
+  const field=document.getElementById('msendQueueField'),box=document.getElementById('msendQueue');if(!field||!box)return;
+  const q=msendCfg.queue||[];
+  field.style.display=q.length?'':'none';
+  box.innerHTML=q.map(item=>`<div class="mspeer" data-q="${item.id}"><span class="nm">🕓 ${item.paths.length} item(s) → ${esc(item.peerName)}</span><span class="star on" title="Uit wachtrij verwijderen">✕</span></div>`).join('');
+  box.querySelectorAll('.mspeer .star').forEach(st=>st.onclick=async()=>{
+    const id=Number(st.closest('.mspeer').dataset.q);
+    try{await invoke('msend_queue_remove',{id});}catch(e){}
+    await msendLoad();
+  });
+}
+function renderMsendSettings(){
+  document.querySelectorAll('#msendSeg button').forEach(b=>b.classList.toggle('on',(b.dataset.ms==='1')===!!msendCfg.enabled));
+  const inp=document.getElementById('msendName');if(inp&&document.activeElement!==inp)inp.value=msendCfg.name||'';
+  const rv=document.getElementById('msendRecv');if(rv)rv.innerHTML=`<div class="mspeer"><span class="nm">📁 ${esc(msendCfg.recvDir||'—')}</span></div>`;
+  renderMsendQueue();refreshMsendPeers();
+}
+{
+  const seg=document.getElementById('msendSeg');
+  if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=async()=>{msendCfg.enabled=b.dataset.ms==='1';await msendApply();flash(msendCfg.enabled?'📡 Versturen (LAN) aan — zichtbaar als "'+(msendCfg.name||'?')+'"':'Versturen (LAN) uit');});
+  const inp=document.getElementById('msendName');
+  if(inp){inp.onchange=async()=>{msendCfg.name=inp.value.trim();await msendApply();};}
+  const pick=document.getElementById('msendPickRecv');
+  if(pick)pick.onclick=async()=>{if(!LIVE)return;try{const p=await invoke('pick_folder');if(p){msendCfg.recvDir=p;await msendApply();}}catch(e){}};
+}
+// Peer-status in het instellingenpaneel elke 5 s verversen (goedkoop: de lijst
+// staat al in het geheugen van de backend), en alleen als het paneel open is.
+setInterval(()=>{const p=document.getElementById('panel');if(p&&p.classList.contains('open')&&msendCfg.enabled)refreshMsendPeers();},5000);
+// Meldingen: iets ontvangen, of een wachtrij-item alsnog verstuurd.
+if(T?.event?.listen){
+  T.event.listen('msend-received',e=>{const d=e.payload||{};flash('📥 '+(d.count||0)+' bestand(en) ontvangen van '+(d.from||'?'));});
+  T.event.listen('msend-queue-sent',e=>{const d=e.payload||{};if(d.paths)markSent(d.paths);flash('📤 Wachtrij verstuurd naar '+(d.to||'?'));msendLoad();});
+}
+
+async function openMsendSub(anchor,paths){
+  if(document.getElementById('lsSub'))return;
+  const sub=document.createElement('div');sub.className='ctxmenu lssub';sub.id='lsSub';
+  sub.innerHTML='<div class="mi disabled"><span class="ico">📡</span>Computers ophalen…</div>';
+  document.body.appendChild(sub);
+  const r=anchor.getBoundingClientRect();
+  sub.style.top=Math.min(r.top,innerHeight-120)+'px';
+  sub.style.left=(r.right+4+230>innerWidth?r.left-234:r.right+4)+'px';
+  let peers=[];try{if(invoke)peers=await invoke('msend_peers');}catch(e){}
+  if(!document.getElementById('lsSub'))return;
+  if(!peers.length){sub.innerHTML='<div class="mi disabled"><span class="ico">🔌</span>Geen computers gevonden</div><div class="mi disabled" style="opacity:.6;font-size:11px">Zet Macsplorer + Versturen (LAN) aan op de andere pc</div>';return;}
+  sub.innerHTML=peers.map((d,i)=>`<div class="mi msdev" data-i="${i}"><span class="ico">${d.favorite?'⭐':'💻'}</span>${esc(d.name)}<span class="msdot ${d.online?'on':'off'}" title="${d.online?'Online':'Offline — gaat in de wachtrij'}"></span></div>`).join('');
+  sub.querySelectorAll('.msdev').forEach(el=>el.onclick=async ev=>{
+    ev.stopPropagation();
+    const d=peers[+el.dataset.i];
+    el.innerHTML='<span class="ico">⏳</span>Versturen…';
+    try{
+      const res=await invoke('msend_send',{peerId:d.id,paths});
+      hideCtxMenu();
+      if(res==='sent'){markSent(paths);flash('📤 Verstuurd naar '+d.name);}
+      else{flash('🕓 In wachtrij — wordt verstuurd zodra '+d.name+' online is');msendLoad();}
+    }catch(e){hideCtxMenu();alert('Versturen mislukt:\n'+e);}
+  });
+}
 // Nieuwe-bestandstypes voor het 'Nieuw'-menu en de werkbalkknop.
 const NEW_TYPES=[
   {k:'folder',ico:'📁',label:'Map'},
@@ -1299,10 +1406,17 @@ async function runEmpty(a){
 function showShareMenu(x,y){
   hideCtxMenu();
   if(!selPaths().length){flash('Selecteer eerst iets');return;}
-  const h=`<div class="mi" data-a="mail"><span class="ico">✉️</span>Verzend met mail</div><div class="mi" data-a="localsend"><span class="ico">📤</span>Versturen via LocalSend</div>`;
+  let h=`<div class="mi" data-a="mail"><span class="ico">✉️</span>Verzend met mail</div>`;
+  if(msendCfg.enabled)h+=`<div class="mi has-sub" data-a="msend"><span class="ico">📡</span>Versturen naar computer</div><div class="mi" data-a="localsend"><span class="ico">📤</span>Versturen via LocalSend</div>`;
   const m=document.createElement('div');m.className='ctxmenu';m.id='ctxMenu';m.innerHTML=h;document.body.appendChild(m);
   const r=m.getBoundingClientRect();m.style.left=Math.min(x,innerWidth-r.width-8)+'px';m.style.top=Math.min(y,innerHeight-r.height-8)+'px';
-  m.querySelectorAll('.mi').forEach(mi=>mi.onclick=()=>{const a=mi.dataset.a;hideCtxMenu();runCtx(a);});
+  const paths=selPaths();
+  m.querySelectorAll('.mi').forEach(mi=>{
+    const a=mi.dataset.a;
+    if(a==='msend'){mi.onclick=ev=>{ev.stopPropagation();openMsendSub(mi,paths);};mi.onmouseenter=()=>openMsendSub(mi,paths);return;}
+    mi.onmouseenter=()=>{const s=document.getElementById('lsSub');if(s)s.remove();};
+    mi.onclick=()=>{hideCtxMenu();runCtx(a);};
+  });
 }
 {
   const on=(id,fn)=>{const b=document.getElementById(id);if(b)b.onclick=fn;};
@@ -2231,7 +2345,7 @@ const SAMPLE=[
  {name:'Backup_2026.zip',path:'C:\\Users\\Mac\\OneDrive\\Backup_2026.zip',isDir:false,size:536000000,modified:da(30),ext:'zip'}];
 
 /* ===== Start ===== */
-setAlias();renderPaths();renderTagSettings();renderTagSidebar();renderApps();renderTabs();applyPreviewLayout();updatePreview(null);loadLocations();reloadAliases();
+setAlias();renderPaths();renderTagSettings();renderTagSidebar();renderApps();renderTabs();applyPreviewLayout();updatePreview(null);loadLocations();reloadAliases();msendLoad();
 if(LIVE)invoke('drag_icon').then(p=>dragIconPath=p).catch(()=>{});
 </script>
 </body>

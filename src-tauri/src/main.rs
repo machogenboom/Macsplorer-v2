@@ -2,6 +2,8 @@
 // Lichtgewicht, snel: parallelle bestandszoekfunctie + Excel-synoniemen.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod msend;
+
 use calamine::{open_workbook_auto, Data, Reader};
 use ignore::{WalkBuilder, WalkState};
 use serde::Serialize;
@@ -2056,6 +2058,10 @@ fn main() {
     cleanup_old_update();
     tauri::Builder::default()
         .plugin(tauri_plugin_drag::init())
+        .setup(|app| {
+            msend::start(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             read_dir,
             list_locations,
@@ -2084,6 +2090,12 @@ fn main() {
             localsend,
             localsend_discover,
             localsend_send,
+            msend::msend_get_settings,
+            msend::msend_set_settings,
+            msend::msend_peers,
+            msend::msend_set_favorite,
+            msend::msend_send,
+            msend::msend_queue_remove,
             shell_properties,
             set_drive_label,
             list_apps,
